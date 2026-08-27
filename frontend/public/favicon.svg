@@ -1,8 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <circle cx="32" cy="34" r="24" fill="#ba4949"/>
-  <path d="M32 34 m0 -18 a18 18 0 0 1 0 36 a18 18 0 0 1 0 -36" fill="none" stroke="#ffffff" stroke-width="4" opacity="0.9"/>
-  <path d="M32 34 V22" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
-  <circle cx="32" cy="34" r="4" fill="#ffffff"/>
-  <path d="M26 10 a6 7 0 0 1 12 0" fill="none" stroke="#ba4949" stroke-width="5" stroke-linecap="round"/>
-  <path d="M30 0 h4 l-1 6 h-2 z" fill="#ba4949"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <path d="M16 7.8 C10.5 6.6 3.5 9.8 3.5 16 C3.5 22.5 9.2 28.5 16 28.5 C22.8 28.5 28.5 22.5 28.5 16 C28.5 9.8 21.5 9 16 7.8 Z" fill="#d8473c"/>
+  <ellipse cx="8.5" cy="10.5" rx="3" ry="2.2" fill="rgba(255,255,255,0.35)"/>
+  <path d="M16 6.8 L12.5 3.2 L14 6.6 Z M16 6.8 L19.5 3.2 L18 6.6 Z M16 6.8 L21 5.2 L19.2 7.6 Z M16 6.8 L11 5.2 L12.8 7.6 Z" fill="#3f8a5c"/>
+  <path d="M16 6.8 L16.1 2.4 C16.1 1.8 16.9 1.7 17.1 2.4 L17.5 3.6" stroke="#2f6b3f" stroke-width="1.6" fill="none" stroke-linecap="round"/>
 </svg>

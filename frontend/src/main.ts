@@ -51,7 +51,14 @@ const app = document.querySelector<HTMLDivElement>('#app') as HTMLDivElement
 app.innerHTML = `
   <header class="topbar">
     <div class="brand">
-      <span class="logo"><i class="ph-bold ph-timer"></i></span>
+      <span class="logo">
+        <svg viewBox="0 0 32 32" aria-hidden="true">
+          <path d="M16 7.8 C10.5 6.6 3.5 9.8 3.5 16 C3.5 22.5 9.2 28.5 16 28.5 C22.8 28.5 28.5 22.5 28.5 16 C28.5 9.8 21.5 9 16 7.8 Z" fill="#f0554b"/>
+          <ellipse cx="8.5" cy="10.5" rx="3" ry="2.2" fill="rgba(255,255,255,0.35)"/>
+          <path d="M16 6.8 L12.5 3.2 L14 6.6 Z M16 6.8 L19.5 3.2 L18 6.6 Z M16 6.8 L21 5.2 L19.2 7.6 Z M16 6.8 L11 5.2 L12.8 7.6 Z" fill="#4c9c63"/>
+          <path d="M16 6.8 L16.1 2.4 C16.1 1.8 16.9 1.7 17.1 2.4 L17.5 3.6" stroke="#3f8a5c" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+        </svg>
+      </span>
       <span>Pomopopo</span>
     </div>
     <div class="topbar-actions">

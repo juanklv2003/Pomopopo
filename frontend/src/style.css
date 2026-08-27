@@ -66,9 +66,11 @@ body {
   height: 34px;
   display: grid;
   place-items: center;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 10px;
-  font-size: 20px;
+}
+
+.brand .logo svg {
+  width: 30px;
+  height: 30px;
 }
 
 .topbar-actions {
@@ -78,7 +80,7 @@ body {
 
 .icon-btn {
   border: none;
-  background: rgba(255, 255, 255, 0.18);
+  background: transparent;
   color: #fff;
   width: 40px;
   height: 40px;
@@ -91,7 +93,7 @@ body {
 }
 
 .icon-btn:hover {
-  background: rgba(255, 255, 255, 0.32);
+  background: rgba(255, 255, 255, 0.18);
 }
 
 .icon-btn:active {
@@ -249,7 +251,10 @@ body {
 
 /* ---------- Tasks ---------- */
 .tasks-card {
-  background: var(--panel);
+  background: color-mix(in srgb, var(--brand) 8%, rgba(255, 255, 255, 0.72));
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  backdrop-filter: blur(14px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   border-radius: 18px;
   box-shadow: var(--shadow);
   margin-top: 16px;
@@ -336,17 +341,17 @@ body {
 }
 
 .task-item:hover {
-  background: #f4f4f8;
+  background: color-mix(in srgb, var(--brand) 8%, rgba(255, 255, 255, 0.5));
 }
 
 .task-item.active {
-  background: #eef0f8;
+  background: color-mix(in srgb, var(--brand) 16%, rgba(255, 255, 255, 0.62));
 }
 
 .task-check {
   width: 22px;
   height: 22px;
-  border: 2px solid #c6c6d2;
+  border: 2px solid color-mix(in srgb, var(--brand) 35%, #c6c6d2);
   border-radius: 6px;
   display: grid;
   place-items: center;
