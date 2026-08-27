@@ -1,0 +1,14 @@
+# Node
+node_modules/
+backend/data/*.json
+
+# Build
+frontend/dist/
+
+# Go
+frontend/pomopopo.exe
+*.exe
+
+# Logs / misc
+*.log
+.DS_Store
