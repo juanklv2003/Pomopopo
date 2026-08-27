@@ -13,7 +13,7 @@ Aplicación web de técnica **Pomodoro** inspirada en el estilo de *pomofocus.io
 - Sonido ambiente generado (Lluvia, Café, Viento) sin archivos externos.
 - Tema de color de fondo/tarjeta (6 colores).
 - Lista de tareas con estimación en pomodoros y contador del día.
-- Iconos de la librería Lucide (SVG) en toda la interfaz.
+- Iconos de la librería Phosphor (peso bold) en toda la interfaz.
 
 ## Requisitos
 

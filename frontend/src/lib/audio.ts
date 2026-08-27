@@ -20,7 +20,7 @@ export const ALARMS: AlarmDef[] = [
 ]
 
 export const AMBIENT: AmbientDef[] = [
-  { id: 'off', label: 'Sin sonido', icon: 'volume-x' },
+  { id: 'off', label: 'Sin sonido', icon: 'speaker-none' },
   { id: 'rain', label: 'Lluvia', icon: 'cloud-rain' },
   { id: 'cafe', label: 'Café', icon: 'coffee' },
   { id: 'wind', label: 'Viento', icon: 'wind' },

@@ -658,60 +658,60 @@ body {
   display: none !important;
 }
 
-/* ---------- Iconos Lucide (SVG) ---------- */
-.brand .logo svg,
-.icon-btn svg {
-  width: 20px;
-  height: 20px;
+/* ---------- Iconos Phosphor ---------- */
+.brand .logo .ph-bold,
+.icon-btn .ph-bold {
+  font-size: 20px;
+  line-height: 1;
 }
 
-.session-count svg {
-  width: 16px;
-  height: 16px;
+.session-count .ph-bold {
+  font-size: 16px;
+  line-height: 1;
 }
 
-.ctrl-btn svg {
-  width: 20px;
-  height: 20px;
+.ctrl-btn .ph-bold {
+  font-size: 20px;
+  line-height: 1;
 }
 
-.tasks-head h2 svg {
-  width: 18px;
-  height: 18px;
+.tasks-head h2 .ph-bold {
+  font-size: 18px;
+  line-height: 1;
   vertical-align: text-bottom;
 }
 
-.add-task button svg {
-  width: 20px;
-  height: 20px;
+.add-task button .ph-bold {
+  font-size: 20px;
+  line-height: 1;
 }
 
-.task-check svg {
-  width: 15px;
-  height: 15px;
+.task-check .ph-bold {
+  font-size: 15px;
+  line-height: 1;
 }
 
-.est button svg,
-.task-del svg {
-  width: 15px;
-  height: 15px;
+.est button .ph-bold,
+.task-del .ph-bold {
+  font-size: 15px;
+  line-height: 1;
 }
 
-.close-btn svg {
-  width: 20px;
-  height: 20px;
+.close-btn .ph-bold {
+  font-size: 20px;
+  line-height: 1;
 }
 
-.modal-head h2 svg {
-  width: 20px;
-  height: 20px;
+.modal-head h2 .ph-bold {
+  font-size: 20px;
+  line-height: 1;
   vertical-align: text-bottom;
   margin-right: 4px;
 }
 
-.option-btn svg {
-  width: 18px;
-  height: 18px;
+.option-btn .ph-bold {
+  font-size: 18px;
+  line-height: 1;
 }
 
 .option-btn .demo {

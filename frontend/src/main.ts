@@ -1,8 +1,8 @@
 import './style.css'
+import '@phosphor-icons/web/bold'
 import { api } from './lib/api'
 import { AudioEngine, ALARMS, AMBIENT } from './lib/audio'
 import { THEMES, getTheme, applyTheme } from './lib/themes'
-import { renderIcons } from './lib/icons'
 import type { Mode, Settings, Task } from './lib/types'
 import { DEFAULT_SETTINGS } from './lib/types'
 
@@ -51,16 +51,16 @@ const app = document.querySelector<HTMLDivElement>('#app') as HTMLDivElement
 app.innerHTML = `
   <header class="topbar">
     <div class="brand">
-      <span class="logo"><i data-lucide="timer"></i></span>
+      <span class="logo"><i class="ph-bold ph-timer"></i></span>
       <span>Pomopopo</span>
     </div>
     <div class="topbar-actions">
-      <button class="icon-btn" id="btn-settings" title="Ajustes"><i data-lucide="settings"></i></button>
+      <button class="icon-btn" id="btn-settings" title="Ajustes"><i class="ph-bold ph-gear"></i></button>
     </div>
   </header>
 
   <p class="session-count">
-    <i data-lucide="timer"></i>
+    <i class="ph-bold ph-timer"></i>
     <span>Completados hoy:</span>
     <strong id="session-num">0</strong>
   </p>
@@ -77,19 +77,19 @@ app.innerHTML = `
     </div>
     <div class="timer-task" id="current-task">#1 — Tarea de ejemplo</div>
     <div class="timer-controls">
-      <button class="ctrl-btn" id="btn-reset" title="Reiniciar"><i data-lucide="rotate-ccw"></i></button>
+      <button class="ctrl-btn" id="btn-reset" title="Reiniciar"><i class="ph-bold ph-arrow-counter-clockwise"></i></button>
       <button class="main-btn" id="btn-toggle">Comenzar</button>
-      <button class="ctrl-btn" id="btn-skip" title="Saltar"><i data-lucide="skip-forward"></i></button>
+      <button class="ctrl-btn" id="btn-skip" title="Saltar"><i class="ph-bold ph-skip-forward"></i></button>
     </div>
   </section>
 
   <section class="tasks-card">
     <div class="tasks-head">
-      <h2><i data-lucide="list-todo"></i> Tareas <span class="progress-pill" id="tasks-progress"></span></h2>
+      <h2><i class="ph-bold ph-list-checks"></i> Tareas <span class="progress-pill" id="tasks-progress"></span></h2>
     </div>
     <div class="add-task">
       <input id="new-task" type="text" placeholder="¿Qué tarea quieres hacer?" maxlength="120" />
-      <button id="add-task" title="Añadir tarea"><i data-lucide="plus"></i></button>
+      <button id="add-task" title="Añadir tarea"><i class="ph-bold ph-plus"></i></button>
     </div>
     <ul class="task-list" id="task-list"></ul>
     <div class="tasks-empty hidden" id="tasks-empty">Añade una tarea para empezar</div>
@@ -158,19 +158,17 @@ function renderTasks(): void {
       const isActive = t.id === state.activeTaskId
       const left = Math.max(0, t.estimatedPomodoros - t.completedPomodoros)
       return `<li class="task-item ${t.done ? 'done-on' : ''} ${isActive ? 'active' : ''}" data-id="${t.id}">
-        <span class="task-check ${t.done ? 'done' : ''}" title="Completar tarea"><i data-lucide="check"></i></span>
+        <span class="task-check ${t.done ? 'done' : ''}" title="Completar tarea"><i class="ph-bold ph-check"></i></span>
         <span class="task-title">${escapeHtml(t.title)}</span>
         <span class="task-meta">
           <span class="est">
-            <button class="est-minus"><i data-lucide="minus"></i></button><span>${left}</span>
+            <button class="est-minus"><i class="ph-bold ph-minus"></i></button><span>${left}</span>
           </span>
-          <button class="task-del" title="Eliminar"><i data-lucide="x"></i></button>
+          <button class="task-del" title="Eliminar"><i class="ph-bold ph-x"></i></button>
         </span>
       </li>`
     })
     .join('')
-
-  renderIcons(el.taskList)
 
   el.taskList.querySelectorAll<HTMLElement>('.task-item').forEach((li) => {
     const id = li.dataset.id as string
@@ -341,8 +339,8 @@ function openSettings(): void {
   backdrop.innerHTML = `
     <div class="modal" role="dialog" aria-modal="true">
       <div class="modal-head">
-        <h2><i data-lucide="settings"></i> Ajustes</h2>
-        <button class="close-btn" id="modal-close"><i data-lucide="x"></i></button>
+        <h2><i class="ph-bold ph-gear"></i> Ajustes</h2>
+        <button class="close-btn" id="modal-close"><i class="ph-bold ph-x"></i></button>
       </div>
 
       <div class="setting-group">
@@ -383,7 +381,7 @@ function openSettings(): void {
         <div class="option-list" id="alarm-list">
           ${ALARMS.map((a) => `
             <button class="option-btn ${s.alarmSound === a.id ? 'active' : ''}" data-alarm="${a.id}">
-              <i data-lucide="bell" class="demo"></i><span>${a.label}</span>
+              <i class="ph-bold ph-bell demo"></i><span>${a.label}</span>
             </button>`).join('')}
         </div>
       </div>
@@ -393,7 +391,7 @@ function openSettings(): void {
         <div class="option-list" id="ambient-list">
           ${AMBIENT.map((a) => `
             <button class="option-btn ${s.ambientSound === a.id ? 'active' : ''}" data-ambient="${a.id}">
-              <i data-lucide="${a.icon}"></i><span>${a.label}</span>
+              <i class="ph-bold ph-${a.icon}"></i><span>${a.label}</span>
             </button>`).join('')}
         </div>
       </div>
@@ -414,7 +412,6 @@ function openSettings(): void {
     </div>`
 
   document.body.appendChild(backdrop)
-  renderIcons(backdrop)
 
   const close = () => backdrop.remove()
   backdrop.addEventListener('click', (e) => {
@@ -524,7 +521,6 @@ async function bootstrap(): Promise<void> {
   state.timeLeft = state.total
   audio.setAmbient(state.settings.ambientSound)
   render()
-  renderIcons()
 }
 
 void bootstrap()
