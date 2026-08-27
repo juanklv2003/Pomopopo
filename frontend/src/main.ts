@@ -298,8 +298,10 @@ function tick(): void {
   renderTimer()
 }
 
-// Al terminar un periodo
-function completeSession(): void {
+// Al terminar un periodo.
+// - Llamada normal (desde tick): al llegar a 0, puede auto-arrancar la siguiente fase.
+// - Con skip=true (botón saltar): avanza a la siguiente fase pero SIN arrancar.
+function completeSession(opts: { skip?: boolean } = {}): void {
   if (state.mode === 'focus') {
     // Se terminó un pomodoro de trabajo
     void api.addSession()
@@ -331,12 +333,17 @@ function completeSession(): void {
 
   state.total = secondsForMode(state.mode, state.settings)
   state.timeLeft = state.total
+  // Asegurar que la siguiente fase queda parada (el salto no debe dejarla corriendo)
+  state.running = false
+  window.clearInterval(state.timerId)
 
   render()
 
-  // Auto-arranque
-  const auto = state.mode === 'focus' ? state.settings.autoStartFocus : state.settings.autoStartBreaks
-  if (auto) startTimer()
+  // Auto-arranque solo en finalización normal (al llegar a 0), no al saltar
+  if (!opts.skip) {
+    const auto = state.mode === 'focus' ? state.settings.autoStartFocus : state.settings.autoStartBreaks
+    if (auto) startTimer()
+  }
 }
 // ---------- Modal de ajustes ----------
 function openSettings(): void {
@@ -491,7 +498,8 @@ el.btnToggle.addEventListener('click', () => (state.running ? stopTimer() : star
 el.btnReset.addEventListener('click', resetTimer)
 el.btnSkip.addEventListener('click', () => {
   if (!state.running && state.timeLeft === state.total) return
-  completeSession()
+  // Salta a la siguiente fase (descanso) pero la deja PARADA, sin que corra el tiempo
+  completeSession({ skip: true })
 })
 el.btnSettings.addEventListener('click', openSettings)
 el.newTask.addEventListener('keydown', (e) => {
