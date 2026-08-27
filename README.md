@@ -1,4 +1,4 @@
-# 🍅 Pomopopo
+# Pomopopo
 
 Aplicación web de técnica **Pomodoro** inspirada en el estilo de *pomofocus.io*.
 
@@ -7,12 +7,13 @@ Aplicación web de técnica **Pomodoro** inspirada en el estilo de *pomofocus.io
 
 ## Funcionalidades
 
-- ⏱️ Temporizador Pomodoro / Descanso corto / Descanso largo con anillo de progreso.
-- ⚙️ Ajustes: modificar duraciones, descanso largo cada N pomodoros, auto-inicio.
-- 🔔 Sonido de alarma configurable (Digital, Campana, Dong, Clásico) — sintetizado con Web Audio.
-- 🎧 Sonido ambiente generado (Lluvia, Café, Viento) sin archivos externos.
-- 🎨 Tema de color de fondo/tarjeta (6 colores).
-- 📋 Lista de tareas con estimación en pomodoros y contador del día.
+- Temporizador Pomodoro / Descanso corto / Descanso largo con anillo de progreso.
+- Ajustes: modificar duraciones, descanso largo cada N pomodoros, auto-inicio.
+- Sonido de alarma configurable (Digital, Campana, Dong, Clásico) — sintetizado con Web Audio.
+- Sonido ambiente generado (Lluvia, Café, Viento) sin archivos externos.
+- Tema de color de fondo/tarjeta (6 colores).
+- Lista de tareas con estimación en pomodoros y contador del día.
+- Iconos de la librería Lucide (SVG) en toda la interfaz.
 
 ## Requisitos
 

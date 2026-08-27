@@ -100,7 +100,10 @@ body {
 
 /* ---------- Pomodoro completados hoy ---------- */
 .session-count {
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   color: #fff;
   font-weight: 500;
   font-size: 13px;
@@ -109,9 +112,8 @@ body {
   opacity: 0.95;
 }
 
-.tr-icon {
-  font-size: 15px;
-  margin-left: 6px;
+.session-count strong {
+  font-weight: 700;
 }
 
 /* ---------- Timer card ---------- */
@@ -596,7 +598,8 @@ body {
 }
 
 .option-btn .demo {
-  font-size: 14px;
+  width: 20px;
+  height: 20px;
 }
 
 .theme-grid {
@@ -621,17 +624,6 @@ body {
 .swatch.active {
   border-color: #fff;
   box-shadow: 0 0 0 2px var(--ink);
-}
-
-.swatch.active::after {
-  content: '✓';
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  color: #fff;
-  font-weight: 700;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
 
 .modal-foot {
@@ -664,6 +656,67 @@ body {
 
 .hidden {
   display: none !important;
+}
+
+/* ---------- Iconos Lucide (SVG) ---------- */
+.brand .logo svg,
+.icon-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.session-count svg {
+  width: 16px;
+  height: 16px;
+}
+
+.ctrl-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.tasks-head h2 svg {
+  width: 18px;
+  height: 18px;
+  vertical-align: text-bottom;
+}
+
+.add-task button svg {
+  width: 20px;
+  height: 20px;
+}
+
+.task-check svg {
+  width: 15px;
+  height: 15px;
+}
+
+.est button svg,
+.task-del svg {
+  width: 15px;
+  height: 15px;
+}
+
+.close-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.modal-head h2 svg {
+  width: 20px;
+  height: 20px;
+  vertical-align: text-bottom;
+  margin-right: 4px;
+}
+
+.option-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.option-btn .demo {
+  margin-right: 2px;
+  opacity: 0.7;
 }
 
 @media (max-width: 520px) {

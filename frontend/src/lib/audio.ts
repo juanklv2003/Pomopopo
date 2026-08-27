@@ -20,10 +20,10 @@ export const ALARMS: AlarmDef[] = [
 ]
 
 export const AMBIENT: AmbientDef[] = [
-  { id: 'off', label: 'Sin sonido', icon: '🔇' },
-  { id: 'rain', label: 'Lluvia', icon: '🌧️' },
-  { id: 'cafe', label: 'Café', icon: '☕' },
-  { id: 'wind', label: 'Viento', icon: '🍃' },
+  { id: 'off', label: 'Sin sonido', icon: 'volume-x' },
+  { id: 'rain', label: 'Lluvia', icon: 'cloud-rain' },
+  { id: 'cafe', label: 'Café', icon: 'coffee' },
+  { id: 'wind', label: 'Viento', icon: 'wind' },
 ]
 
 export class AudioEngine {

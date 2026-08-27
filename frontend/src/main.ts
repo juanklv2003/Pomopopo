@@ -2,6 +2,7 @@ import './style.css'
 import { api } from './lib/api'
 import { AudioEngine, ALARMS, AMBIENT } from './lib/audio'
 import { THEMES, getTheme, applyTheme } from './lib/themes'
+import { renderIcons } from './lib/icons'
 import type { Mode, Settings, Task } from './lib/types'
 import { DEFAULT_SETTINGS } from './lib/types'
 
@@ -21,12 +22,14 @@ const state = {
   timerId: 0 as number,
 }
 
-const RING = 2 * Math.PI * 116
+// Circunferencia real del anillo (SVG con r=45 => 2·π·45)
+const RING = 2 * Math.PI * 45
 
 // ---------- Utilidades ----------
 function fmt(s: number): string {
-  const m = Math.floor(s / 60)
-  const sec = s % 60
+  const total = Math.floor(s) // solo segundos enteros, sin milisegundos
+  const m = Math.floor(total / 60)
+  const sec = total % 60
   return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
 }
 
@@ -48,15 +51,19 @@ const app = document.querySelector<HTMLDivElement>('#app') as HTMLDivElement
 app.innerHTML = `
   <header class="topbar">
     <div class="brand">
-      <span class="logo">🍅</span>
+      <span class="logo"><i data-lucide="timer"></i></span>
       <span>Pomopopo</span>
     </div>
     <div class="topbar-actions">
-      <button class="icon-btn" id="btn-settings" title="Ajustes">⚙️</button>
+      <button class="icon-btn" id="btn-settings" title="Ajustes"><i data-lucide="settings"></i></button>
     </div>
   </header>
 
-  <p class="session-count" id="session-count"></p>
+  <p class="session-count">
+    <i data-lucide="timer"></i>
+    <span>Completados hoy:</span>
+    <strong id="session-num">0</strong>
+  </p>
 
   <section class="timer-card">
     <div class="tabs" id="tabs"></div>
@@ -70,25 +77,25 @@ app.innerHTML = `
     </div>
     <div class="timer-task" id="current-task">#1 — Tarea de ejemplo</div>
     <div class="timer-controls">
-      <button class="ctrl-btn" id="btn-reset" title="Reiniciar">↺</button>
+      <button class="ctrl-btn" id="btn-reset" title="Reiniciar"><i data-lucide="rotate-ccw"></i></button>
       <button class="main-btn" id="btn-toggle">Comenzar</button>
-      <button class="ctrl-btn" id="btn-skip" title="Saltar">⏭</button>
+      <button class="ctrl-btn" id="btn-skip" title="Saltar"><i data-lucide="skip-forward"></i></button>
     </div>
   </section>
 
   <section class="tasks-card">
     <div class="tasks-head">
-      <h2>📋 Tareas <span class="progress-pill" id="tasks-progress"></span></h2>
+      <h2><i data-lucide="list-todo"></i> Tareas <span class="progress-pill" id="tasks-progress"></span></h2>
     </div>
     <div class="add-task">
       <input id="new-task" type="text" placeholder="¿Qué tarea quieres hacer?" maxlength="120" />
-      <button id="add-task" title="Añadir tarea">+</button>
+      <button id="add-task" title="Añadir tarea"><i data-lucide="plus"></i></button>
     </div>
     <ul class="task-list" id="task-list"></ul>
-    <div class="tasks-empty hidden" id="tasks-empty">Añade una tarea para empezar 🍅</div>
+    <div class="tasks-empty hidden" id="tasks-empty">Añade una tarea para empezar</div>
   </section>
 
-  <p class="footer-note">Pomopopo · Técnica Pomodoro 🍅</p>
+  <p class="footer-note">Pomopopo · Técnica Pomodoro</p>
 `
 // ---------- Referencias DOM ----------
 const el = {
@@ -100,7 +107,7 @@ const el = {
   btnReset: document.querySelector<HTMLButtonElement>('#btn-reset') as HTMLButtonElement,
   btnSkip: document.querySelector<HTMLButtonElement>('#btn-skip') as HTMLButtonElement,
   btnSettings: document.querySelector<HTMLButtonElement>('#btn-settings') as HTMLButtonElement,
-  sessionCount: document.querySelector<HTMLParagraphElement>('#session-count') as HTMLParagraphElement,
+  sessionNum: document.querySelector<HTMLElement>('#session-num') as HTMLElement,
   taskList: document.querySelector<HTMLUListElement>('#task-list') as HTMLUListElement,
   tasksEmpty: document.querySelector<HTMLDivElement>('#tasks-empty') as HTMLDivElement,
   tasksProgress: document.querySelector<HTMLSpanElement>('#tasks-progress') as HTMLSpanElement,
@@ -134,9 +141,7 @@ function renderTimer(): void {
   const t = activeTask()
   el.currentTask.textContent = t ? `#${t.estimatedPomodoros - t.completedPomodoros} — ${t.title}` : 'Selecciona o crea una tarea'
   document.title = `${fmt(state.timeLeft)} · ${modeLabel(state.mode)} — Pomopopo`
-  el.sessionCount.innerHTML =
-    `🍅 completados hoy: <strong>${state.sessionsToday}</strong>` +
-    `<span class="tr-icon">${'🍅'.repeat(Math.min(state.sessionsToday, 5))}</span>`
+  el.sessionNum.textContent = String(state.sessionsToday)
 }
 function renderTasks(): void {
   const open = state.tasks.filter((t) => !t.done)
@@ -144,7 +149,7 @@ function renderTasks(): void {
   const tokens = state.tasks.reduce((a, t) => a + t.estimatedPomodoros, 0)
   const remaining = open.reduce((a, t) => a + (t.estimatedPomodoros - t.completedPomodoros), 0)
 
-  el.tasksProgress.textContent = `${remaining}/${tokens} 🍅`
+  el.tasksProgress.textContent = `${remaining}/${tokens}`
   el.tasksEmpty.classList.toggle('hidden', state.tasks.length > 0)
 
   el.taskList.innerHTML = [...open, ...done]
@@ -153,17 +158,19 @@ function renderTasks(): void {
       const isActive = t.id === state.activeTaskId
       const left = Math.max(0, t.estimatedPomodoros - t.completedPomodoros)
       return `<li class="task-item ${t.done ? 'done-on' : ''} ${isActive ? 'active' : ''}" data-id="${t.id}">
-        <span class="task-check ${t.done ? 'done' : ''}" title="Completar tarea">✓</span>
+        <span class="task-check ${t.done ? 'done' : ''}" title="Completar tarea"><i data-lucide="check"></i></span>
         <span class="task-title">${escapeHtml(t.title)}</span>
         <span class="task-meta">
           <span class="est">
-            <button class="est-minus">−</button><span>${left}</span>
+            <button class="est-minus"><i data-lucide="minus"></i></button><span>${left}</span>
           </span>
-          <button class="task-del" title="Eliminar">✕</button>
+          <button class="task-del" title="Eliminar"><i data-lucide="x"></i></button>
         </span>
       </li>`
     })
     .join('')
+
+  renderIcons(el.taskList)
 
   el.taskList.querySelectorAll<HTMLElement>('.task-item').forEach((li) => {
     const id = li.dataset.id as string
@@ -334,8 +341,8 @@ function openSettings(): void {
   backdrop.innerHTML = `
     <div class="modal" role="dialog" aria-modal="true">
       <div class="modal-head">
-        <h2>⚙️ Ajustes</h2>
-        <button class="close-btn" id="modal-close">✕</button>
+        <h2><i data-lucide="settings"></i> Ajustes</h2>
+        <button class="close-btn" id="modal-close"><i data-lucide="x"></i></button>
       </div>
 
       <div class="setting-group">
@@ -376,7 +383,7 @@ function openSettings(): void {
         <div class="option-list" id="alarm-list">
           ${ALARMS.map((a) => `
             <button class="option-btn ${s.alarmSound === a.id ? 'active' : ''}" data-alarm="${a.id}">
-              <span class="demo">🔔</span><span>${a.label}</span>
+              <i data-lucide="bell" class="demo"></i><span>${a.label}</span>
             </button>`).join('')}
         </div>
       </div>
@@ -386,7 +393,7 @@ function openSettings(): void {
         <div class="option-list" id="ambient-list">
           ${AMBIENT.map((a) => `
             <button class="option-btn ${s.ambientSound === a.id ? 'active' : ''}" data-ambient="${a.id}">
-              <span>${a.icon}</span><span>${a.label}</span>
+              <i data-lucide="${a.icon}"></i><span>${a.label}</span>
             </button>`).join('')}
         </div>
       </div>
@@ -407,6 +414,7 @@ function openSettings(): void {
     </div>`
 
   document.body.appendChild(backdrop)
+  renderIcons(backdrop)
 
   const close = () => backdrop.remove()
   backdrop.addEventListener('click', (e) => {
@@ -516,6 +524,7 @@ async function bootstrap(): Promise<void> {
   state.timeLeft = state.total
   audio.setAmbient(state.settings.ambientSound)
   render()
+  renderIcons()
 }
 
 void bootstrap()
