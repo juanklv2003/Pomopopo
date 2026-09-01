@@ -29,6 +29,8 @@ export const AMBIENT: AmbientDef[] = [
 export class AudioEngine {
   private ctx: AudioContext | null = null
   private master: GainNode | null = null
+  private alarmGain: GainNode | null = null
+  private ambientGain: GainNode | null = null
   private ambientNodes: AudioNode[] = []
   private currentAmbient = 'off'
 
@@ -42,9 +44,27 @@ export class AudioEngine {
       this.master = this.ctx.createGain()
       this.master.gain.value = 0.9
       this.master.connect(this.ctx.destination)
+      this.alarmGain = this.ctx.createGain()
+      this.alarmGain.gain.value = 1
+      this.alarmGain.connect(this.master)
+      this.ambientGain = this.ctx.createGain()
+      this.ambientGain.gain.value = 0.5
+      this.ambientGain.connect(this.master)
     }
     if (this.ctx.state === 'suspended') void this.ctx.resume()
     return this.ctx
+  }
+
+  /** Volumen de alarma (0-100) */
+  setAlarmVolume(v: number): void {
+    this.ensure()
+    ;(this.alarmGain as GainNode).gain.value = Math.max(0, Math.min(1, v / 100))
+  }
+
+  /** Volumen de ambiente (0-100) */
+  setAmbientVolume(v: number): void {
+    this.ensure()
+    ;(this.ambientGain as GainNode).gain.value = Math.max(0, Math.min(1, v / 100))
   }
 
   /** Desbloquea/crea el contexto de audio (debe llamarse en un gesto del usuario). */
@@ -86,7 +106,7 @@ export class AudioEngine {
       { f: 440, t: 0.4, d: 0.16 },
       { f: 620, t: 0.62, d: 0.4 },
     ]
-    const master = this.master as GainNode
+    const alarmGain = this.alarmGain as GainNode
     for (const s of seq) {
       const osc = ctx.createOscillator()
       const g = ctx.createGain()
@@ -97,7 +117,7 @@ export class AudioEngine {
       g.gain.setValueAtTime(0.5, ctx.currentTime + s.t + s.d - 0.03)
       g.gain.linearRampToValueAtTime(0, ctx.currentTime + s.t + s.d)
       osc.connect(g)
-      g.connect(master)
+      g.connect(alarmGain)
       osc.start(ctx.currentTime + s.t)
       osc.stop(ctx.currentTime + s.t + s.d + 0.05)
     }
@@ -127,7 +147,7 @@ export class AudioEngine {
     g.gain.linearRampToValueAtTime(vol, t0 + 0.02)
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur)
     osc.connect(g)
-    g.connect(this.master as GainNode)
+    g.connect(this.alarmGain as GainNode)
     osc.start(t0)
     osc.stop(t0 + dur + 0.02)
   }
@@ -209,7 +229,7 @@ export class AudioEngine {
     g.gain.value = vol
     src.connect(f)
     f.connect(g)
-    g.connect(this.master as GainNode)
+    g.connect(this.ambientGain as GainNode)
     src.start()
     this.ambientNodes.push(src, f, g)
   }
@@ -233,7 +253,7 @@ export class AudioEngine {
     lfoGain.connect(g.gain)
     src.connect(hp)
     hp.connect(g)
-    g.connect(this.master as GainNode)
+    g.connect(this.ambientGain as GainNode)
     src.start()
     lfo.start()
     this.ambientNodes.push(src, hp, g, lfo, lfoGain)
@@ -253,7 +273,7 @@ export class AudioEngine {
     lfo.connect(lfoG)
     lfoG.connect(gate.gain)
     pulse.connect(gate)
-    gate.connect(this.master as GainNode)
+    gate.connect(this.ambientGain as GainNode)
     pulse.start()
     lfo.start()
     this.ambientNodes.push(pulse, gate, lfo, lfoG)

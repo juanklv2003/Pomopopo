@@ -119,6 +119,8 @@ export class Store {
     const allowed = [
       'focusMinutes', 'shortBreakMinutes', 'longBreakMinutes', 'longBreakInterval',
       'autoStartBreaks', 'autoStartFocus', 'alarmSound', 'ambientSound', 'theme',
+      'backgroundPattern', 'alarmVolume', 'ambientVolume', 'customColor',
+      'savedColors', 'hiddenThemes',
     ]
     for (const key of allowed) {
       if (key in patch) this.db.settings[key] = patch[key]

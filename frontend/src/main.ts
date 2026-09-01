@@ -2,7 +2,7 @@ import './style.css'
 import '@phosphor-icons/web/bold'
 import { api } from './lib/api'
 import { AudioEngine, ALARMS, AMBIENT } from './lib/audio'
-import { THEMES, getTheme, applyTheme } from './lib/themes'
+import { THEMES, getTheme, applyTheme, darkenColor } from './lib/themes'
 import type { Mode, Settings, Task } from './lib/types'
 import { DEFAULT_SETTINGS } from './lib/types'
 
@@ -20,6 +20,7 @@ const state = {
   cycle: 0, // pomodoros completados dentro del ciclo actual (para descanso largo)
   activeTaskId: null as string | null,
   timerId: 0 as number,
+  taskPage: 0,
 }
 
 // Circunferencia real del anillo (SVG con r=45 => 2·π·45)
@@ -98,8 +99,17 @@ app.innerHTML = `
       <input id="new-task" type="text" placeholder="¿Qué tarea quieres hacer?" maxlength="120" />
       <button id="add-task" title="Añadir tarea"><i class="ph-bold ph-plus"></i></button>
     </div>
-    <ul class="task-list" id="task-list"></ul>
-    <div class="tasks-empty hidden" id="tasks-empty">Añade una tarea para empezar</div>
+    <div class="tasks-body">
+      <div class="tasks-col tasks-col-main">
+        <ul class="task-list" id="task-list"></ul>
+        <div class="task-pagination" id="task-pagination"></div>
+        <div class="tasks-empty hidden" id="tasks-empty">Añade una tarea para empezar</div>
+      </div>
+      <div class="tasks-col tasks-col-done hidden" id="done-section">
+        <h3 class="done-title"><i class="ph-bold ph-check-circle"></i> Finalizadas</h3>
+        <ul class="task-list done-list" id="done-list"></ul>
+      </div>
+    </div>
   </section>
 
   <p class="footer-note">Pomopopo · Técnica Pomodoro</p>
@@ -116,6 +126,9 @@ const el = {
   btnSettings: document.querySelector<HTMLButtonElement>('#btn-settings') as HTMLButtonElement,
   sessionNum: document.querySelector<HTMLElement>('#session-num') as HTMLElement,
   taskList: document.querySelector<HTMLUListElement>('#task-list') as HTMLUListElement,
+  doneList: document.querySelector<HTMLUListElement>('#done-list') as HTMLUListElement,
+  doneSection: document.querySelector<HTMLDivElement>('#done-section') as HTMLDivElement,
+  taskPagination: document.querySelector<HTMLDivElement>('#task-pagination') as HTMLDivElement,
   tasksEmpty: document.querySelector<HTMLDivElement>('#tasks-empty') as HTMLDivElement,
   tasksProgress: document.querySelector<HTMLSpanElement>('#tasks-progress') as HTMLSpanElement,
   newTask: document.querySelector<HTMLInputElement>('#new-task') as HTMLInputElement,
@@ -150,26 +163,33 @@ function renderTimer(): void {
   document.title = `${fmt(state.timeLeft)} · ${modeLabel(state.mode)} — Pomopopo`
   el.sessionNum.textContent = String(state.sessionsToday)
 }
+const TASKS_PER_PAGE = 4
+
 function renderTasks(): void {
-  const open = state.tasks.filter((t) => !t.done)
-  const done = state.tasks.filter((t) => t.done)
+  const open = state.tasks.filter((t) => !t.done).sort((a, b) => a.order - b.order)
+  const done = state.tasks.filter((t) => t.done).sort((a, b) => a.order - b.order)
   const tokens = state.tasks.reduce((a, t) => a + t.estimatedPomodoros, 0)
   const remaining = open.reduce((a, t) => a + (t.estimatedPomodoros - t.completedPomodoros), 0)
 
   el.tasksProgress.textContent = `${remaining}/${tokens}`
   el.tasksEmpty.classList.toggle('hidden', state.tasks.length > 0)
 
-  el.taskList.innerHTML = [...open, ...done]
-    .sort((a, b) => a.order - b.order)
+  // Paginación de tareas abiertas
+  const totalPages = Math.max(1, Math.ceil(open.length / TASKS_PER_PAGE))
+  if (state.taskPage >= totalPages) state.taskPage = totalPages - 1
+  const pageStart = state.taskPage * TASKS_PER_PAGE
+  const pageTasks = open.slice(pageStart, pageStart + TASKS_PER_PAGE)
+
+  el.taskList.innerHTML = pageTasks
     .map((t) => {
       const isActive = t.id === state.activeTaskId
       const left = Math.max(0, t.estimatedPomodoros - t.completedPomodoros)
-      return `<li class="task-item ${t.done ? 'done-on' : ''} ${isActive ? 'active' : ''}" data-id="${t.id}">
-        <span class="task-check ${t.done ? 'done' : ''}" title="Completar tarea"><i class="ph-bold ph-check"></i></span>
+      return `<li class="task-item ${isActive ? 'active' : ''}" data-id="${t.id}">
+        <span class="task-check" title="Completar tarea"><i class="ph-bold ph-check"></i></span>
         <span class="task-title">${escapeHtml(t.title)}</span>
         <span class="task-meta">
           <span class="est">
-            <button class="est-minus"><i class="ph-bold ph-minus"></i></button><span>${left}</span>
+            <button class="est-minus"><i class="ph-bold ph-minus"></i></button><span>${left}</span><button class="est-plus"><i class="ph-bold ph-plus"></i></button>
           </span>
           <button class="task-del" title="Eliminar"><i class="ph-bold ph-x"></i></button>
         </span>
@@ -177,6 +197,43 @@ function renderTasks(): void {
     })
     .join('')
 
+  // Controles de paginación
+  if (open.length > TASKS_PER_PAGE) {
+    el.taskPagination.innerHTML = `
+      <button class="page-btn" id="page-prev" ${state.taskPage === 0 ? 'disabled' : ''}><i class="ph-bold ph-caret-left"></i></button>
+      <span class="page-info">${state.taskPage + 1} / ${totalPages}</span>
+      <button class="page-btn" id="page-next" ${state.taskPage >= totalPages - 1 ? 'disabled' : ''}><i class="ph-bold ph-caret-right"></i></button>`
+    el.taskPagination.querySelector('#page-prev')?.addEventListener('click', () => {
+      state.taskPage--
+      renderTasks()
+    })
+    el.taskPagination.querySelector('#page-next')?.addEventListener('click', () => {
+      state.taskPage++
+      renderTasks()
+    })
+  } else {
+    el.taskPagination.innerHTML = ''
+  }
+
+  // Lista de finalizadas
+  el.doneSection.classList.toggle('hidden', done.length === 0)
+  el.doneList.innerHTML = done
+    .map((t) => {
+      const left = Math.max(0, t.estimatedPomodoros - t.completedPomodoros)
+      return `<li class="task-item done-on" data-id="${t.id}">
+        <span class="task-check done" title="Desmarcar"><i class="ph-bold ph-check"></i></span>
+        <span class="task-title">${escapeHtml(t.title)}</span>
+        <span class="task-meta">
+          <span class="est">
+            <button class="est-minus"><i class="ph-bold ph-minus"></i></button><span>${left}</span><button class="est-plus"><i class="ph-bold ph-plus"></i></button>
+          </span>
+          <button class="task-del" title="Eliminar"><i class="ph-bold ph-x"></i></button>
+        </span>
+      </li>`
+    })
+    .join('')
+
+  // Bind events — tareas abiertas
   el.taskList.querySelectorAll<HTMLElement>('.task-item').forEach((li) => {
     const id = li.dataset.id as string
     li.querySelector('.task-check')?.addEventListener('click', (e) => {
@@ -187,11 +244,36 @@ function renderTasks(): void {
       e.stopPropagation()
       decEst(id)
     })
+    li.querySelector('.est-plus')?.addEventListener('click', (e) => {
+      e.stopPropagation()
+      incEst(id)
+    })
     li.querySelector('.task-del')?.addEventListener('click', (e) => {
       e.stopPropagation()
       void removeTask(id)
     })
     li.querySelector('.task-title')?.addEventListener('click', () => setActive(id))
+  })
+
+  // Bind events — finalizadas
+  el.doneList.querySelectorAll<HTMLElement>('.task-item').forEach((li) => {
+    const id = li.dataset.id as string
+    li.querySelector('.task-check')?.addEventListener('click', (e) => {
+      e.stopPropagation()
+      toggleDone(id)
+    })
+    li.querySelector('.est-minus')?.addEventListener('click', (e) => {
+      e.stopPropagation()
+      decEst(id)
+    })
+    li.querySelector('.est-plus')?.addEventListener('click', (e) => {
+      e.stopPropagation()
+      incEst(id)
+    })
+    li.querySelector('.task-del')?.addEventListener('click', (e) => {
+      e.stopPropagation()
+      void removeTask(id)
+    })
   })
 }
 
@@ -208,6 +290,9 @@ async function addTask(title: string): Promise<void> {
     const t = await api.createTask(trimmed)
     state.tasks.push(t)
     if (!state.activeTaskId) state.activeTaskId = t.id
+    // Ir a la última página para ver la tarea nueva
+    const open = state.tasks.filter((tk) => !tk.done)
+    state.taskPage = Math.max(0, Math.ceil(open.length / TASKS_PER_PAGE) - 1)
     renderTasks()
     renderTimer()
   } catch (err) {
@@ -241,6 +326,14 @@ function decEst(id: string): void {
   const t = state.tasks.find((x) => x.id === id)
   if (!t || t.estimatedPomodoros <= 1) return
   t.estimatedPomodoros -= 1
+  void api.updateTask(id, { estimatedPomodoros: t.estimatedPomodoros })
+  renderTasks()
+}
+
+function incEst(id: string): void {
+  const t = state.tasks.find((x) => x.id === id)
+  if (!t) return
+  t.estimatedPomodoros += 1
   void api.updateTask(id, { estimatedPomodoros: t.estimatedPomodoros })
   renderTasks()
 }
@@ -346,8 +439,95 @@ function completeSession(opts: { skip?: boolean } = {}): void {
   }
 }
 // ---------- Modal de ajustes ----------
+const PATTERNS = [
+  { id: 'none', label: 'Ninguno', icon: 'ph-bold ph-prohibit' },
+  { id: 'stars', label: 'Estrellas', icon: 'ph-bold ph-star' },
+  { id: 'circles', label: 'Círculos', icon: 'ph-bold ph-circle' },
+  { id: 'triangles', label: 'Triángulos', icon: 'ph-bold ph-triangle' },
+  { id: 'butterflies', label: 'Mariposas', icon: 'ph-bold ph-butterfly' },
+]
+
+function renderThemeGrid(backdrop: HTMLElement, s: Settings): void {
+  const grid = backdrop.querySelector('#theme-grid')
+  if (!grid) return
+  const hidden = s.hiddenThemes || []
+  grid.innerHTML = `
+    ${THEMES.filter((t) => !hidden.includes(t.id)).map((t) => `
+      <span class="swatch theme-swatch ${s.theme === t.id ? 'active' : ''}" data-theme="${t.id}"
+        style="background:${t.brand}" title="${t.label}">
+        <button class="theme-del" data-theme-id="${t.id}"><i class="ph-bold ph-x"></i></button>
+      </span>`).join('')}
+    ${(s.savedColors || []).map((c) => `
+      <span class="swatch saved-swatch ${s.theme === 'custom' && s.customColor === c ? 'active' : ''}"
+        data-saved-color="${c}" style="background:${c}" title="${c}">
+        <button class="saved-del" data-del-color="${c}"><i class="ph-bold ph-x"></i></button>
+      </span>`).join('')}`
+
+  // Actualizar preview del picker
+  const preview = backdrop.querySelector('.custom-preview') as HTMLElement | null
+  if (preview) preview.style.background = s.customColor || '#ba4949'
+
+  // Re-bind events
+  grid.querySelectorAll<HTMLElement>('[data-theme]').forEach((b) => {
+    b.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('.theme-del')) return
+      grid.querySelectorAll('[data-theme]').forEach((x) => x.classList.remove('active'))
+      grid.querySelectorAll('.saved-swatch').forEach((x) => x.classList.remove('active'))
+      b.classList.add('active')
+      const t = getTheme(b.dataset.theme!)
+      applyTheme(t.brand, t.dark)
+    })
+  })
+
+  grid.querySelectorAll<HTMLElement>('.theme-del').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      const id = btn.dataset.themeId!
+      if (s.theme === id) return // no borrar el activo
+      const hidden = state.settings.hiddenThemes || []
+      if (!hidden.includes(id)) {
+        hidden.push(id)
+        state.settings.hiddenThemes = hidden
+        void api.saveSettings(state.settings).catch(() => {})
+        renderThemeGrid(backdrop, s)
+      }
+    })
+  })
+
+  grid.querySelectorAll<HTMLElement>('.saved-swatch').forEach((el) => {
+    el.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('.saved-del')) return
+      grid.querySelectorAll('[data-theme]').forEach((x) => x.classList.remove('active'))
+      grid.querySelectorAll('.saved-swatch').forEach((x) => x.classList.remove('active'))
+      el.classList.add('active')
+      const hex = el.dataset.savedColor!
+      const input = backdrop.querySelector<HTMLInputElement>('#custom-color')
+      if (input) input.value = hex
+      if (preview) preview.style.background = hex
+      applyTheme(hex, darkenColor(hex))
+    })
+  })
+
+  grid.querySelectorAll<HTMLElement>('.saved-del').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      const hex = btn.dataset.delColor!
+      state.settings.savedColors = (state.settings.savedColors || []).filter((c) => c !== hex)
+      void api.saveSettings(state.settings).catch(() => {})
+      renderThemeGrid(backdrop, s)
+    })
+  })
+}
+
 function openSettings(): void {
   const s = state.settings
+  const origTheme = s.theme
+  const origCustomColor = s.customColor
+  const origPattern = s.backgroundPattern
+  const origSavedColors = [...(s.savedColors || [])]
+  const origHiddenThemes = [...(s.hiddenThemes || [])]
+  const origAlarmVol = s.alarmVolume
+  const origAmbientVol = s.ambientVolume
   const backdrop = document.createElement('div')
   backdrop.className = 'backdrop'
   backdrop.innerHTML = `
@@ -392,6 +572,11 @@ function openSettings(): void {
 
       <div class="setting-group">
         <h3>Sonido de alarma</h3>
+        <div class="volume-row">
+          <i class="ph-bold ph-speaker-high"></i>
+          <input type="range" id="set-alarm-vol" min="0" max="100" value="${s.alarmVolume}" />
+          <span class="vol-val" id="set-alarm-vol-val">${s.alarmVolume}%</span>
+        </div>
         <div class="option-list" id="alarm-list">
           ${ALARMS.map((a) => `
             <button class="option-btn ${s.alarmSound === a.id ? 'active' : ''}" data-alarm="${a.id}">
@@ -402,6 +587,11 @@ function openSettings(): void {
 
       <div class="setting-group">
         <h3>Sonido ambiente</h3>
+        <div class="volume-row">
+          <i class="ph-bold ph-speaker-high"></i>
+          <input type="range" id="set-ambient-vol" min="0" max="100" value="${s.ambientVolume}" />
+          <span class="vol-val" id="set-ambient-vol-val">${s.ambientVolume}%</span>
+        </div>
         <div class="option-list" id="ambient-list">
           ${AMBIENT.map((a) => `
             <button class="option-btn ${s.ambientSound === a.id ? 'active' : ''}" data-ambient="${a.id}">
@@ -413,9 +603,34 @@ function openSettings(): void {
       <div class="setting-group">
         <h3>Tema (color)</h3>
         <div class="theme-grid" id="theme-grid">
-          ${THEMES.map((t) => `
-            <button class="swatch ${s.theme === t.id ? 'active' : ''}" data-theme="${t.id}"
-              style="background:${t.brand}" title="${t.label}"></button>`).join('')}
+          ${THEMES.filter((t) => !(s.hiddenThemes || []).includes(t.id)).map((t) => `
+            <span class="swatch theme-swatch ${s.theme === t.id ? 'active' : ''}" data-theme="${t.id}"
+              style="background:${t.brand}" title="${t.label}">
+              <button class="theme-del" data-theme-id="${t.id}"><i class="ph-bold ph-x"></i></button>
+            </span>`).join('')}
+          ${(s.savedColors || []).map((c) => `
+            <span class="swatch saved-swatch ${s.theme === 'custom' && s.customColor === c ? 'active' : ''}"
+              data-saved-color="${c}" style="background:${c}" title="${c}">
+              <button class="saved-del" data-del-color="${c}"><i class="ph-bold ph-x"></i></button>
+            </span>`).join('')}
+        </div>
+        <div class="custom-color-row">
+          <label class="custom-pick" title="Elegir color">
+            <input type="color" id="custom-color" value="${s.customColor || '#ba4949'}" />
+            <span class="custom-preview" style="background:${s.customColor || '#ba4949'}"></span>
+            <i class="ph-bold ph-palette"></i>
+          </label>
+          <button class="save-color-btn" id="save-color-btn" title="Guardar color"><i class="ph-bold ph-floppy-disk"></i> Guardar</button>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <h3>Decoración de fondo</h3>
+        <div class="pattern-list" id="pattern-list">
+          ${PATTERNS.map((p) => `
+            <button class="pattern-btn ${s.backgroundPattern === p.id ? 'active' : ''}" data-pattern="${p.id}">
+              <i class="ph-bold ${p.icon}"></i><span>${p.label}</span>
+            </button>`).join('')}
         </div>
       </div>
 
@@ -426,24 +641,61 @@ function openSettings(): void {
     </div>`
 
   document.body.appendChild(backdrop)
+  // Fuerza dos frames para que la transición de entrada se aplique
+  requestAnimationFrame(() => requestAnimationFrame(() => backdrop.classList.add('open')))
 
-  const close = () => backdrop.remove()
+  // Cierre con transición de salida (desliza hacia la derecha y desvanece)
+  const close = (revert = false) => {
+    clearTimeout(ambientPreviewTimer)
+    if (revert) {
+      audio.stopAmbient()
+      audio.setAlarmVolume(origAlarmVol)
+      audio.setAmbientVolume(origAmbientVol)
+      state.settings.savedColors = origSavedColors
+      state.settings.hiddenThemes = origHiddenThemes
+      const origThemeObj = getTheme(origTheme, origCustomColor)
+      applyTheme(origThemeObj.brand, origThemeObj.dark)
+      applyBackgroundPattern(origPattern)
+    }
+    backdrop.classList.remove('open')
+    backdrop.addEventListener('transitionend', () => backdrop.remove(), { once: true })
+    // Respaldo por si 'transitionend' no dispara
+    setTimeout(() => backdrop.remove(), 400)
+  }
   backdrop.addEventListener('click', (e) => {
-    if (e.target === backdrop) close()
+    if (e.target === backdrop) close(true)
   })
-  backdrop.querySelector<HTMLButtonElement>('#modal-close')!.addEventListener('click', close)
-  backdrop.querySelector<HTMLButtonElement>('#modal-cancel')!.addEventListener('click', close)
+  backdrop.querySelector<HTMLButtonElement>('#modal-close')!.addEventListener('click', () => close(true))
+  backdrop.querySelector<HTMLButtonElement>('#modal-cancel')!.addEventListener('click', () => close(true))
 
-  // Preview de alarmas al pulsar sobre su icono
+  // Preview de alarmas al pulsar sobre el botón
   backdrop.querySelectorAll<HTMLButtonElement>('[data-alarm]').forEach((b) => {
-    const demo = b.querySelector<HTMLElement>('.demo')
-    demo?.addEventListener('click', (e) => {
-      e.stopPropagation()
+    b.addEventListener('click', (e) => {
+      // Evitar duplicar si ya se procesó por bindPick
+      if ((e.target as HTMLElement).closest('.demo')) {
+        e.stopPropagation()
+      }
       audio.previewAlarm(b.dataset.alarm as string)
     })
   })
 
-  // Navegación de alarma / ambiente / tema: marca el botón activo
+  // Preview de ambiente al pulsar sobre el botón (reproduce 3s y para)
+  let ambientPreviewTimer = 0
+  backdrop.querySelectorAll<HTMLButtonElement>('[data-ambient]').forEach((b) => {
+    b.addEventListener('click', () => {
+      clearTimeout(ambientPreviewTimer)
+      const id = b.dataset.ambient!
+      if (id === 'off') {
+        audio.stopAmbient()
+      } else {
+        audio.stopAmbient()
+        audio.setAmbient(id)
+        ambientPreviewTimer = window.setTimeout(() => audio.stopAmbient(), 3000)
+      }
+    })
+  })
+
+  // Navegación de alarma / ambiente: marca el botón activo
   function bindPick(sel: string): void {
     backdrop.querySelectorAll<HTMLButtonElement>(sel).forEach((b) => {
       b.addEventListener('click', () => {
@@ -454,11 +706,114 @@ function openSettings(): void {
   }
   bindPick('[data-alarm]')
   bindPick('[data-ambient]')
-  bindPick('[data-theme]')
+
+  // Theme: live preview al hacer click
+  backdrop.querySelectorAll<HTMLElement>('[data-theme]').forEach((b) => {
+    b.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('.theme-del')) return
+      backdrop.querySelectorAll('[data-theme]').forEach((x) => x.classList.remove('active'))
+      backdrop.querySelectorAll('.saved-swatch').forEach((x) => x.classList.remove('active'))
+      b.classList.add('active')
+      const t = getTheme(b.dataset.theme!)
+      applyTheme(t.brand, t.dark)
+    })
+  })
+
+  // Borrar temas predefinidos
+  backdrop.querySelectorAll<HTMLElement>('.theme-del').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      const id = btn.dataset.themeId!
+      const hidden = state.settings.hiddenThemes || []
+      if (!hidden.includes(id)) {
+        hidden.push(id)
+        state.settings.hiddenThemes = hidden
+        void api.saveSettings(state.settings).catch(() => {})
+        renderThemeGrid(backdrop, s)
+      }
+    })
+  })
+
+  // Custom color: live preview
+  const customColorInput = backdrop.querySelector<HTMLInputElement>('#custom-color')!
+  const customPreview = backdrop.querySelector<HTMLElement>('.custom-preview')
+  customColorInput.addEventListener('input', () => {
+    backdrop.querySelectorAll('[data-theme]').forEach((x) => x.classList.remove('active'))
+    backdrop.querySelectorAll('.saved-swatch').forEach((x) => x.classList.remove('active'))
+    const hex = customColorInput.value
+    if (customPreview) customPreview.style.background = hex
+    applyTheme(hex, darkenColor(hex))
+  })
+
+  // Guardar color personalizado en la lista
+  backdrop.querySelector('#save-color-btn')?.addEventListener('click', () => {
+    const hex = customColorInput.value
+    const colors = state.settings.savedColors || []
+    if (!colors.includes(hex)) {
+      colors.push(hex)
+      state.settings.savedColors = colors
+      void api.saveSettings(state.settings).catch(() => {})
+      renderThemeGrid(backdrop, s)
+    }
+  })
+
+  // Click en colores guardados: seleccionar
+  backdrop.querySelectorAll<HTMLElement>('.saved-swatch').forEach((el) => {
+    el.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('.saved-del')) return
+      backdrop.querySelectorAll('[data-theme]').forEach((x) => x.classList.remove('active'))
+      backdrop.querySelectorAll('.saved-swatch').forEach((x) => x.classList.remove('active'))
+      el.classList.add('active')
+      const hex = el.dataset.savedColor!
+      customColorInput.value = hex
+      if (customPreview) customPreview.style.background = hex
+      applyTheme(hex, darkenColor(hex))
+    })
+  })
+
+  // Borrar colores guardados
+  backdrop.querySelectorAll<HTMLElement>('.saved-del').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      const hex = btn.dataset.delColor!
+      state.settings.savedColors = (state.settings.savedColors || []).filter((c) => c !== hex)
+      void api.saveSettings(state.settings).catch(() => {})
+      renderThemeGrid(backdrop, s)
+    })
+  })
+
+  // Pattern: live preview al hacer click
+  backdrop.querySelectorAll<HTMLButtonElement>('[data-pattern]').forEach((b) => {
+    b.addEventListener('click', () => {
+      backdrop.querySelectorAll('[data-pattern]').forEach((x) => x.classList.remove('active'))
+      b.classList.add('active')
+      applyBackgroundPattern(b.dataset.pattern!)
+    })
+  })
+
+  // Volume sliders: live preview
+  const alarmVol = backdrop.querySelector<HTMLInputElement>('#set-alarm-vol')!
+  const alarmVolVal = backdrop.querySelector<HTMLSpanElement>('#set-alarm-vol-val')!
+  alarmVol.addEventListener('input', () => {
+    const v = Number(alarmVol.value)
+    alarmVolVal.textContent = `${v}%`
+    audio.setAlarmVolume(v)
+  })
+
+  const ambientVol = backdrop.querySelector<HTMLInputElement>('#set-ambient-vol')!
+  const ambientVolVal = backdrop.querySelector<HTMLSpanElement>('#set-ambient-vol-val')!
+  ambientVol.addEventListener('input', () => {
+    const v = Number(ambientVol.value)
+    ambientVolVal.textContent = `${v}%`
+    audio.setAmbientVolume(v)
+  })
+
 // Guardar
   backdrop.querySelector<HTMLButtonElement>('#modal-save')!.addEventListener('click', () => {
     const num = (sel: string): number =>
       Math.max(1, Number((backdrop.querySelector(sel) as HTMLInputElement).value) || 25)
+    const activeTheme = backdrop.querySelector<HTMLButtonElement>('[data-theme].active')?.dataset.theme
+    const isCustom = !activeTheme
     const newSettings: Settings = {
       ...state.settings,
       focusMinutes: num('#set-focus'),
@@ -469,7 +824,11 @@ function openSettings(): void {
       autoStartFocus: backdrop.querySelector('#set-autofocus')!.classList.contains('on'),
       alarmSound: backdrop.querySelector<HTMLButtonElement>('[data-alarm].active')?.dataset.alarm ?? state.settings.alarmSound,
       ambientSound: backdrop.querySelector<HTMLButtonElement>('[data-ambient].active')?.dataset.ambient ?? state.settings.ambientSound,
-      theme: backdrop.querySelector<HTMLButtonElement>('[data-theme].active')?.dataset.theme ?? state.settings.theme,
+      theme: isCustom ? 'custom' : activeTheme,
+      customColor: isCustom ? customColorInput.value : state.settings.customColor,
+      backgroundPattern: backdrop.querySelector<HTMLButtonElement>('[data-pattern].active')?.dataset.pattern ?? state.settings.backgroundPattern,
+      alarmVolume: Number(alarmVol.value),
+      ambientVolume: Number(ambientVol.value),
     }
     applySettings(newSettings)
     void api.saveSettings(newSettings).catch(() => {})
@@ -484,13 +843,27 @@ function openSettings(): void {
 
 function applySettings(s: Settings): void {
   state.settings = { ...s }
-  const theme = getTheme(s.theme)
+  const theme = getTheme(s.theme, s.customColor)
   applyTheme(theme.brand, theme.dark)
+  applyBackgroundPattern(s.backgroundPattern)
+  // Aplicar volúmenes
+  audio.setAlarmVolume(s.alarmVolume)
+  audio.setAmbientVolume(s.ambientVolume)
+  // Forzar restart del ambiente para que siempre aplique
+  audio.stopAmbient()
+  audio.setAmbient(s.ambientSound)
   // Reinicia el temporizador con la nueva duración del modo actual
   state.total = secondsForMode(state.mode, s)
   if (!state.running) state.timeLeft = state.total
-  audio.setAmbient(s.ambientSound)
   render()
+}
+
+function applyBackgroundPattern(pattern: string): void {
+  const body = document.body
+  body.classList.remove('bg-stars', 'bg-circles', 'bg-triangles', 'bg-butterflies')
+  if (pattern && pattern !== 'none') {
+    body.classList.add(`bg-${pattern}`)
+  }
 }
 
 // ---------- Arranque / inicialización ----------
@@ -529,8 +902,11 @@ async function bootstrap(): Promise<void> {
   }
 
   // Aplica ajustes guardados
-  const theme = getTheme(state.settings.theme)
+  const theme = getTheme(state.settings.theme, state.settings.customColor)
   applyTheme(theme.brand, theme.dark)
+  applyBackgroundPattern(state.settings.backgroundPattern)
+  audio.setAlarmVolume(state.settings.alarmVolume)
+  audio.setAmbientVolume(state.settings.ambientVolume)
   state.mode = 'focus'
   state.total = secondsForMode('focus', state.settings)
   state.timeLeft = state.total
