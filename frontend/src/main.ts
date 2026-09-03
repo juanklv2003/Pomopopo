@@ -474,7 +474,8 @@ const PATTERNS = [
   { id: 'stars', label: 'Estrellas', icon: 'ph-bold ph-star' },
   { id: 'circles', label: 'Círculos', icon: 'ph-bold ph-circle' },
   { id: 'triangles', label: 'Triángulos', icon: 'ph-bold ph-triangle' },
-  { id: 'butterflies', label: 'Mariposas', icon: 'ph-bold ph-butterfly' },
+  { id: 'flowers', label: 'Flores', icon: 'ph-bold ph-flower' },
+  { id: 'paws', label: 'Patitas', icon: 'ph-bold ph-paw-print' },
 ]
 
 function renderThemeGrid(backdrop: HTMLElement, s: Settings): void {
@@ -889,8 +890,10 @@ function applySettings(s: Settings): void {
 }
 
 function applyBackgroundPattern(pattern: string): void {
+  // 'butterflies' es el id antiguo de 'flowers': se migra para ajustes ya guardados.
+  if (pattern === 'butterflies') pattern = 'flowers'
   const body = document.body
-  body.classList.remove('bg-stars', 'bg-circles', 'bg-triangles', 'bg-butterflies')
+  body.classList.remove('bg-stars', 'bg-circles', 'bg-triangles', 'bg-butterflies', 'bg-flowers', 'bg-paws')
   if (pattern && pattern !== 'none') {
     body.classList.add(`bg-${pattern}`)
   }
@@ -971,6 +974,9 @@ async function bootstrap(): Promise<void> {
     ])
     state.tasks = tasks
     state.settings = { ...DEFAULT_SETTINGS, ...settings }
+    // Migraciones de ids antiguos (ajustes ya guardados siguen funcionando)
+    if (state.settings.ambientSound === 'cafe') state.settings.ambientSound = 'fireplace'
+    if (state.settings.backgroundPattern === 'butterflies') state.settings.backgroundPattern = 'flowers'
     state.sessionsToday = sessions.sessionsDone
     state.activeTaskId = tasks.find((t) => !t.done)?.id ?? null
   } catch (err) {

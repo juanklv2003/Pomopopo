@@ -17,12 +17,15 @@ export const ALARMS: AlarmDef[] = [
   { id: 'bell', label: 'Campana' },
   { id: 'ding', label: 'Dong' },
   { id: 'classic', label: 'Clásico' },
+  { id: 'arpeggio', label: 'Arpegio' },
+  { id: 'chime', label: 'Carillón' },
+  { id: 'sunrise', label: 'Amanecer' },
 ]
 
 export const AMBIENT: AmbientDef[] = [
   { id: 'off', label: 'Sin sonido', icon: 'speaker-none' },
   { id: 'rain', label: 'Lluvia', icon: 'cloud-rain' },
-  { id: 'cafe', label: 'Café', icon: 'coffee' },
+  { id: 'fireplace', label: 'Chimenea', icon: 'fire' },
   { id: 'wind', label: 'Viento', icon: 'wind' },
 ]
 
@@ -32,6 +35,7 @@ export class AudioEngine {
   private alarmGain: GainNode | null = null
   private ambientGain: GainNode | null = null
   private ambientNodes: AudioNode[] = []
+  private ambientTimer = 0
   private currentAmbient = 'off'
 
   // El AudioContext debe crearse tras un gesto del usuario
@@ -86,6 +90,15 @@ export class AudioEngine {
       case 'classic':
         this.beepPattern()
         break
+      case 'arpeggio':
+        this.arpeggio()
+        break
+      case 'chime':
+        this.chime()
+        break
+      case 'sunrise':
+        this.sunrise()
+        break
       case 'digital':
       default:
         this.digital()
@@ -129,6 +142,25 @@ export class AudioEngine {
     }
   }
 
+  /** Arpegio mayor ascendente (Do-Mi-Sol-Do), brillante y claro. */
+  private arpeggio(): void {
+    const notes = [523, 659, 784, 1047]
+    notes.forEach((f, i) => this.tone(f, 'sine', 0.7, 0.7, i * 130))
+  }
+
+  /** Carillón: campanadas superpuestas con caída larga. */
+  private chime(): void {
+    this.tone(659, 'triangle', 1.6, 0.6)
+    this.tone(988, 'triangle', 1.6, 0.5, 140)
+    this.tone(1319, 'triangle', 1.8, 0.4, 280)
+  }
+
+  /** Amanecer: secuencia suave ascendente para despertar sin sobresaltos. */
+  private sunrise(): void {
+    const notes = [392, 523, 659, 784]
+    notes.forEach((f, i) => this.tone(f, 'sine', 0.9, 0.5, i * 220))
+  }
+
   private tone(
     freq: number,
     type: OscillatorType,
@@ -159,18 +191,24 @@ export class AudioEngine {
   }
 
   setAmbient(id: string): void {
+    // Migración: el antiguo 'cafe' no sonaba convincente y ahora es 'fireplace'.
+    if (id === 'cafe') id = 'fireplace'
     if (id === this.currentAmbient) return
     this.stopAmbient()
     this.currentAmbient = id
     if (id === 'off') return
     const ctx = this.ensure()
-    const vol = id === 'cafe' ? 0.25 : 0.3
+    const vol = 0.3
     if (id === 'rain') this.playRain(ctx, vol)
-    else if (id === 'cafe') this.playCafe(ctx, vol)
+    else if (id === 'fireplace') this.playFireplace(ctx, vol)
     else if (id === 'wind') this.playWind(ctx, vol)
   }
 
   stopAmbient(): void {
+    if (this.ambientTimer) {
+      clearInterval(this.ambientTimer)
+      this.ambientTimer = 0
+    }
     this.ambientNodes.forEach((n) => {
       try {
         if ('stop' in n) (n as AudioScheduledSourceNode).stop()
@@ -259,24 +297,36 @@ export class AudioEngine {
     this.ambientNodes.push(src, hp, g, lfo, lfoGain)
   }
 
-  private playCafe(ctx: AudioContext, vol: number): void {
-    this.loopNoise(ctx, this.pinkNoiseBuffer(ctx), 700, vol)
-    const pulse = ctx.createBufferSource()
-    pulse.buffer = this.pinkNoiseBuffer(ctx, 1.2)
-    pulse.loop = true
-    const gate = ctx.createGain()
-    gate.gain.value = vol * 0.5
-    const lfo = ctx.createOscillator()
-    lfo.frequency.value = 0.6
-    const lfoG = ctx.createGain()
-    lfoG.gain.value = vol * 0.45
-    lfo.connect(lfoG)
-    lfoG.connect(gate.gain)
-    pulse.connect(gate)
-    gate.connect(this.ambientGain as GainNode)
-    pulse.start()
-    lfo.start()
-    this.ambientNodes.push(pulse, gate, lfo, lfoG)
+  private playFireplace(ctx: AudioContext, vol: number): void {
+    // Base grave y cálida del fuego con ruido marrón filtrado.
+    this.loopNoise(ctx, this.brownNoiseBuffer(ctx), 320, vol)
+    // Chispas y crepitaciones: estallidos cortos de ruido con filtro aleatorio.
+    const spark = this.pinkNoiseBuffer(ctx, 1)
+    const target = this.ambientGain as GainNode
+    this.ambientTimer = window.setInterval(() => {
+      if (Math.random() < 0.4) return
+      const src = ctx.createBufferSource()
+      src.buffer = spark
+      const f = ctx.createBiquadFilter()
+      f.type = 'bandpass'
+      f.frequency.value = 1200 + Math.random() * 3300
+      f.Q.value = 1.2
+      const g = ctx.createGain()
+      const t = ctx.currentTime
+      const peak = vol * (0.5 + Math.random() * 0.9)
+      const dur = 0.03 + Math.random() * 0.07
+      g.gain.setValueAtTime(peak, t)
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur)
+      src.connect(f)
+      f.connect(g)
+      g.connect(target)
+      try {
+        src.start(t, Math.random() * 0.8, dur + 0.05)
+      } catch {
+        /* noop */
+      }
+      src.stop(t + dur + 0.06)
+    }, 90)
   }
 
   private playWind(ctx: AudioContext, vol: number): void {

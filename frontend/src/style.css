@@ -1044,6 +1044,7 @@ body {
   animation: twinkle 4s ease-in-out infinite alternate;
 }
 
+.bg-flowers::after,
 .bg-butterflies::after {
   content: '✿   ❀      ✿    ❀  ✿     ❀      ✿   ❀  ✿     ❀    ✿  ❀  ✿     ❀    ✿  ❀   ✿  ❀     ✿    ✿  ❀   ✿  ❀    ✿   ❀  ✿    ❀  ✿   ❀    ✿  ❀   ✿    ❀  ✿  ❀    ✿  ❀   ✿    ❀  ✿  ❀    ✿';
   font-size: 36px;
@@ -1053,6 +1054,24 @@ body {
   text-align: justify;
   padding: 1vh 0;
   color: var(--brand-dark);
+  animation: twinkle 4s ease-in-out infinite alternate;
+}
+
+.bg-paws::after {
+  content: '';
+  background-image:
+    radial-gradient(ellipse 11px 9px at 60px 78px, var(--brand-dark) 98%, transparent 100%),
+    radial-gradient(circle 5.5px at 42px 60px, var(--brand-dark) 98%, transparent 100%),
+    radial-gradient(circle 5.5px at 55px 56px, var(--brand-dark) 98%, transparent 100%),
+    radial-gradient(circle 5.5px at 69px 56px, var(--brand-dark) 98%, transparent 100%),
+    radial-gradient(circle 5.5px at 82px 60px, var(--brand-dark) 98%, transparent 100%),
+    radial-gradient(ellipse 9px 7.5px at 180px 148px, var(--brand-dark) 98%, transparent 100%),
+    radial-gradient(circle 4.5px at 166px 133px, var(--brand-dark) 98%, transparent 100%),
+    radial-gradient(circle 4.5px at 177px 130px, var(--brand-dark) 98%, transparent 100%),
+    radial-gradient(circle 4.5px at 188px 131px, var(--brand-dark) 98%, transparent 100%),
+    radial-gradient(circle 4.5px at 197px 134px, var(--brand-dark) 98%, transparent 100%);
+  background-size: 240px 180px;
+  background-repeat: repeat;
   animation: twinkle 4s ease-in-out infinite alternate;
 }
 

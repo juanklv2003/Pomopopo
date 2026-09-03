@@ -9,8 +9,8 @@ Aplicación web de técnica **Pomodoro** inspirada en el estilo de *pomofocus.io
 
 - Temporizador Pomodoro / Descanso corto / Descanso largo con anillo de progreso.
 - Ajustes: modificar duraciones, descanso largo cada N pomodoros, auto-inicio.
-- Sonido de alarma configurable (Digital, Campana, Dong, Clásico) — sintetizado con Web Audio.
-- Sonido ambiente generado (Lluvia, Café, Viento) sin archivos externos.
+- Sonido de alarma configurable (Digital, Campana, Dong, Clásico, Arpegio, Carillón, Amanecer) — sintetizado con Web Audio.
+- Sonido ambiente generado (Lluvia, Chimenea, Viento) sin archivos externos.
 - Tema de color de fondo/tarjeta (6 colores).
 - Lista de tareas con estimación en pomodoros y contador del día.
 - Iconos de la librería Phosphor (peso bold) en toda la interfaz.
