@@ -4,6 +4,7 @@
 export interface AlarmDef {
   id: string
   label: string
+  icon: string
 }
 
 export interface AmbientDef {
@@ -13,13 +14,14 @@ export interface AmbientDef {
 }
 
 export const ALARMS: AlarmDef[] = [
-  { id: 'digital', label: 'Digital' },
-  { id: 'bell', label: 'Campana' },
-  { id: 'ding', label: 'Dong' },
-  { id: 'classic', label: 'Clásico' },
-  { id: 'arpeggio', label: 'Arpegio' },
-  { id: 'chime', label: 'Carillón' },
-  { id: 'sunrise', label: 'Amanecer' },
+  { id: 'digital', label: 'Digital', icon: 'radio' },
+  { id: 'bell', label: 'Campana', icon: 'bell-ringing' },
+  { id: 'ding', label: 'Dong', icon: 'bell-simple' },
+  { id: 'classic', label: 'Clásico', icon: 'alarm' },
+  { id: 'arpeggio', label: 'Arpegio', icon: 'music-notes' },
+  { id: 'chime', label: 'Carillón', icon: 'sparkle' },
+  { id: 'sunrise', label: 'Amanecer', icon: 'sun-horizon' },
+  { id: 'fanfare', label: 'Fanfarria', icon: 'megaphone' },
 ]
 
 export const AMBIENT: AmbientDef[] = [
@@ -99,6 +101,9 @@ export class AudioEngine {
       case 'sunrise':
         this.sunrise()
         break
+      case 'fanfare':
+        this.fanfare()
+        break
       case 'digital':
       default:
         this.digital()
@@ -159,6 +164,15 @@ export class AudioEngine {
   private sunrise(): void {
     const notes = [392, 523, 659, 784]
     notes.forEach((f, i) => this.tone(f, 'sine', 0.9, 0.5, i * 220))
+  }
+
+  /** Fanfarria: repique de llamada con resolución mayor, brillante y enérgica. */
+  private fanfare(): void {
+    this.tone(523, 'square', 0.12, 0.35)
+    this.tone(523, 'square', 0.12, 0.35, 150)
+    this.tone(523, 'square', 0.12, 0.35, 300)
+    this.tone(659, 'square', 0.35, 0.4, 450)
+    this.tone(784, 'triangle', 0.8, 0.6, 620)
   }
 
   private tone(

@@ -22,6 +22,7 @@ const state = {
   activeTaskId: null as string | null,
   timerId: 0 as number,
   taskPage: 0,
+  taskTab: 'active' as 'active' | 'done',
 }
 
 // Circunferencia real del anillo (SVG con r=45 => 2·π·45)
@@ -76,7 +77,8 @@ app.innerHTML = `
       <span>Pomopopo</span>
     </div>
     <div class="topbar-actions">
-      <button class="icon-btn" id="btn-settings" title="Ajustes"><i class="ph-bold ph-gear"></i></button>
+      <button class="icon-btn" id="btn-pip" title="Ventana flotante" aria-label="Ventana flotante"><i class="ph-bold ph-picture-in-picture"></i></button>
+      <button class="icon-btn" id="btn-settings" title="Ajustes" aria-label="Ajustes"><i class="ph-bold ph-gear"></i></button>
     </div>
   </header>
 
@@ -102,28 +104,29 @@ app.innerHTML = `
       <button class="main-btn" id="btn-toggle">Comenzar</button>
       <button class="ctrl-btn" id="btn-skip" title="Saltar"><i class="ph-bold ph-skip-forward"></i></button>
     </div>
-    <div class="pip-row">
-      <button class="pip-open-btn" id="btn-pip" title="Ventana flotante"><i class="ph-bold ph-picture-in-picture"></i><span>Ventana flotante</span></button>
-    </div>
   </section>
 
   <section class="tasks-card">
     <div class="tasks-head">
-      <h2><i class="ph-bold ph-list-checks"></i> Tareas <span class="progress-pill" id="tasks-progress"></span></h2>
+      <div class="tasks-tabs" role="tablist" aria-label="Listas de tareas">
+        <button class="task-tab" id="tab-tasks" role="tab" aria-selected="true" aria-controls="panel-tasks" data-task-tab="active">Tareas <span class="tab-count" id="count-open">0</span></button>
+        <button class="task-tab" id="tab-done" role="tab" aria-selected="false" aria-controls="panel-done" data-task-tab="done" tabindex="-1">Finalizadas <span class="tab-count" id="count-done">0</span></button>
+      </div>
+      <span class="progress-pill" id="tasks-progress"></span>
     </div>
     <div class="add-task">
       <input id="new-task" type="text" placeholder="¿Qué tarea quieres hacer?" maxlength="120" />
       <button id="add-task" title="Añadir tarea"><i class="ph-bold ph-plus"></i></button>
     </div>
     <div class="tasks-body">
-      <div class="tasks-col tasks-col-main">
+      <div class="tasks-col tasks-col-main" id="panel-tasks" role="tabpanel" aria-labelledby="tab-tasks" tabindex="0">
         <ul class="task-list" id="task-list"></ul>
         <div class="task-pagination" id="task-pagination"></div>
         <div class="tasks-empty hidden" id="tasks-empty">Añade una tarea para empezar</div>
       </div>
-      <div class="tasks-col tasks-col-done hidden" id="done-section">
-        <h3 class="done-title"><i class="ph-bold ph-check-circle"></i> Finalizadas</h3>
+      <div class="tasks-col tasks-col-done hidden" id="done-section" role="tabpanel" aria-labelledby="tab-done" tabindex="0">
         <ul class="task-list done-list" id="done-list"></ul>
+        <div class="tasks-empty hidden" id="done-empty">Todavía no hay tareas finalizadas</div>
       </div>
     </div>
   </section>
@@ -148,6 +151,12 @@ const el = {
   taskPagination: document.querySelector<HTMLDivElement>('#task-pagination') as HTMLDivElement,
   tasksEmpty: document.querySelector<HTMLDivElement>('#tasks-empty') as HTMLDivElement,
   tasksProgress: document.querySelector<HTMLSpanElement>('#tasks-progress') as HTMLSpanElement,
+  tabTasks: document.querySelector<HTMLButtonElement>('#tab-tasks') as HTMLButtonElement,
+  tabDone: document.querySelector<HTMLButtonElement>('#tab-done') as HTMLButtonElement,
+  panelTasks: document.querySelector<HTMLDivElement>('#panel-tasks') as HTMLDivElement,
+  countOpen: document.querySelector<HTMLSpanElement>('#count-open') as HTMLSpanElement,
+  countDone: document.querySelector<HTMLSpanElement>('#count-done') as HTMLSpanElement,
+  doneEmpty: document.querySelector<HTMLDivElement>('#done-empty') as HTMLDivElement,
   newTask: document.querySelector<HTMLInputElement>('#new-task') as HTMLInputElement,
   addTask: document.querySelector<HTMLButtonElement>('#add-task') as HTMLButtonElement,
 }
@@ -200,7 +209,7 @@ function renderTasks(): void {
   const remaining = open.reduce((a, t) => a + (t.estimatedPomodoros - t.completedPomodoros), 0)
 
   el.tasksProgress.textContent = `${remaining}/${tokens}`
-  el.tasksEmpty.classList.toggle('hidden', state.tasks.length > 0)
+  renderTaskTabs(open.length, done.length)
 
   // Paginación de tareas abiertas
   const totalPages = Math.max(1, Math.ceil(open.length / TASKS_PER_PAGE))
@@ -243,8 +252,7 @@ function renderTasks(): void {
     el.taskPagination.innerHTML = ''
   }
 
-  // Lista de finalizadas
-  el.doneSection.classList.toggle('hidden', done.length === 0)
+  // Lista de finalizadas (panel único visible según la pestaña activa)
   el.doneList.innerHTML = done
     .map((t) => {
       const left = Math.max(0, t.estimatedPomodoros - t.completedPomodoros)
@@ -283,7 +291,7 @@ function renderTasks(): void {
     li.querySelector('.task-title')?.addEventListener('click', () => setActive(id))
   })
 
-  // Bind events — finalizadas
+  // Bind events — finalizadas (sin setActive: reactivar es con Desmarcar)
   el.doneList.querySelectorAll<HTMLElement>('.task-item').forEach((li) => {
     const id = li.dataset.id as string
     li.querySelector('.task-check')?.addEventListener('click', (e) => {
@@ -305,6 +313,46 @@ function renderTasks(): void {
   })
 }
 
+// ---------- Pestañas Tareas | Finalizadas (solo module state: sin prefs en localStorage) ----------
+function renderTaskTabs(openCount: number, doneCount: number): void {
+  const showDone = state.taskTab === 'done'
+  el.tabTasks.classList.toggle('active', !showDone)
+  el.tabDone.classList.toggle('active', showDone)
+  el.tabTasks.setAttribute('aria-selected', String(!showDone))
+  el.tabDone.setAttribute('aria-selected', String(showDone))
+  el.tabTasks.tabIndex = showDone ? -1 : 0
+  el.tabDone.tabIndex = showDone ? 0 : -1
+  el.countOpen.textContent = String(openCount)
+  el.countDone.textContent = String(doneCount)
+  el.panelTasks.classList.toggle('hidden', showDone)
+  el.doneSection.classList.toggle('hidden', !showDone)
+  el.tasksEmpty.classList.toggle('hidden', showDone || openCount > 0)
+  el.doneEmpty.classList.toggle('hidden', !showDone || doneCount > 0)
+  el.taskPagination.classList.toggle('hidden', showDone)
+}
+
+function setTaskTab(tab: 'active' | 'done', focus = false): void {
+  if (state.taskTab === tab) return
+  state.taskTab = tab
+  const openCount = state.tasks.filter((t) => !t.done).length
+  const doneCount = state.tasks.filter((t) => t.done).length
+  renderTaskTabs(openCount, doneCount)
+  if (focus) (tab === 'done' ? el.tabDone : el.tabTasks).focus()
+}
+
+function bindTaskTabs(): void {
+  el.tabTasks.addEventListener('click', () => setTaskTab('active'))
+  el.tabDone.addEventListener('click', () => setTaskTab('done'))
+  for (const btn of [el.tabTasks, el.tabDone]) {
+    btn.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+      e.preventDefault()
+      // Con dos pestañas ambas flechas alternan; el foco sigue a la selección (roving tabindex)
+      setTaskTab(btn === el.tabTasks ? 'done' : 'active', true)
+    })
+  }
+}
+
 // Escapar HTML de títulos para evitar inyección
 function escapeHtml(v: string): string {
   return v.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string))
@@ -321,6 +369,7 @@ async function addTask(title: string): Promise<void> {
     // Ir a la última página para ver la tarea nueva
     const open = state.tasks.filter((tk) => !tk.done)
     state.taskPage = Math.max(0, Math.ceil(open.length / TASKS_PER_PAGE) - 1)
+    state.taskTab = 'active'
     renderTasks()
     renderTimer()
   } catch (err) {
@@ -608,11 +657,12 @@ function openSettings(): void {
           <input type="range" id="set-alarm-vol" min="0" max="100" value="${s.alarmVolume}" />
           <span class="vol-val" id="set-alarm-vol-val">${s.alarmVolume}%</span>
         </div>
-        <div class="option-list" id="alarm-list">
-          ${ALARMS.map((a) => `
-            <button class="option-btn ${s.alarmSound === a.id ? 'active' : ''}" data-alarm="${a.id}">
-              <i class="ph-bold ph-bell demo"></i><span>${a.label}</span>
-            </button>`).join('')}
+        <div class="select-row">
+          <span class="select-icon" id="alarm-icon"><i class="ph-bold ph-${ALARMS.find((a) => a.id === s.alarmSound)?.icon ?? 'bell-ringing'}"></i></span>
+          <select class="sound-select" id="alarm-select" aria-label="Sonido de alarma">
+            ${ALARMS.map((a) => `
+              <option value="${a.id}" ${s.alarmSound === a.id ? 'selected' : ''}>${a.label}</option>`).join('')}
+          </select>
         </div>
       </div>
 
@@ -623,11 +673,12 @@ function openSettings(): void {
           <input type="range" id="set-ambient-vol" min="0" max="100" value="${s.ambientVolume}" />
           <span class="vol-val" id="set-ambient-vol-val">${s.ambientVolume}%</span>
         </div>
-        <div class="option-list" id="ambient-list">
-          ${AMBIENT.map((a) => `
-            <button class="option-btn ${s.ambientSound === a.id ? 'active' : ''}" data-ambient="${a.id}">
-              <i class="ph-bold ph-${a.icon}"></i><span>${a.label}</span>
-            </button>`).join('')}
+        <div class="select-row">
+          <span class="select-icon" id="ambient-icon"><i class="ph-bold ph-${AMBIENT.find((a) => a.id === s.ambientSound)?.icon ?? 'speaker-high'}"></i></span>
+          <select class="sound-select" id="ambient-select" aria-label="Sonido ambiente">
+            ${AMBIENT.map((a) => `
+              <option value="${a.id}" ${s.ambientSound === a.id ? 'selected' : ''}>${a.label}</option>`).join('')}
+          </select>
         </div>
       </div>
 
@@ -699,44 +750,32 @@ function openSettings(): void {
   backdrop.querySelector<HTMLButtonElement>('#modal-close')!.addEventListener('click', () => close(true))
   backdrop.querySelector<HTMLButtonElement>('#modal-cancel')!.addEventListener('click', () => close(true))
 
-  // Preview de alarmas al pulsar sobre el botón
-  backdrop.querySelectorAll<HTMLButtonElement>('[data-alarm]').forEach((b) => {
-    b.addEventListener('click', (e) => {
-      // Evitar duplicar si ya se procesó por bindPick
-      if ((e.target as HTMLElement).closest('.demo')) {
-        e.stopPropagation()
-      }
-      audio.previewAlarm(b.dataset.alarm as string)
-    })
+  // Icono + preview al cambiar el desplegable de alarma
+  const alarmSelect = backdrop.querySelector<HTMLSelectElement>('#alarm-select')!
+  const alarmIcon = backdrop.querySelector<HTMLElement>('#alarm-icon')!
+  alarmSelect.addEventListener('change', () => {
+    const def = ALARMS.find((a) => a.id === alarmSelect.value)
+    alarmIcon.innerHTML = `<i class="ph-bold ph-${def?.icon ?? 'bell-ringing'}"></i>`
+    audio.previewAlarm(alarmSelect.value)
   })
 
-  // Preview de ambiente al pulsar sobre el botón (reproduce 3s y para)
+  // Preview de ambiente al cambiar (reproduce 3s y para)
   let ambientPreviewTimer = 0
-  backdrop.querySelectorAll<HTMLButtonElement>('[data-ambient]').forEach((b) => {
-    b.addEventListener('click', () => {
-      clearTimeout(ambientPreviewTimer)
-      const id = b.dataset.ambient!
-      if (id === 'off') {
-        audio.stopAmbient()
-      } else {
-        audio.stopAmbient()
-        audio.setAmbient(id)
-        ambientPreviewTimer = window.setTimeout(() => audio.stopAmbient(), 3000)
-      }
-    })
+  const ambientSelect = backdrop.querySelector<HTMLSelectElement>('#ambient-select')!
+  const ambientIcon = backdrop.querySelector<HTMLElement>('#ambient-icon')!
+  ambientSelect.addEventListener('change', () => {
+    clearTimeout(ambientPreviewTimer)
+    const id = ambientSelect.value
+    const def = AMBIENT.find((a) => a.id === id)
+    ambientIcon.innerHTML = `<i class="ph-bold ph-${def?.icon ?? 'speaker-high'}"></i>`
+    if (id === 'off') {
+      audio.stopAmbient()
+    } else {
+      audio.stopAmbient()
+      audio.setAmbient(id)
+      ambientPreviewTimer = window.setTimeout(() => audio.stopAmbient(), 3000)
+    }
   })
-
-  // Navegación de alarma / ambiente: marca el botón activo
-  function bindPick(sel: string): void {
-    backdrop.querySelectorAll<HTMLButtonElement>(sel).forEach((b) => {
-      b.addEventListener('click', () => {
-        backdrop.querySelectorAll(sel).forEach((x) => x.classList.remove('active'))
-        b.classList.add('active')
-      })
-    })
-  }
-  bindPick('[data-alarm]')
-  bindPick('[data-ambient]')
 
   // Theme: live preview al hacer click
   backdrop.querySelectorAll<HTMLElement>('[data-theme]').forEach((b) => {
@@ -853,8 +892,8 @@ function openSettings(): void {
       longBreakInterval: Math.max(2, Number((backdrop.querySelector('#set-interval') as HTMLInputElement).value) || 4),
       autoStartBreaks: backdrop.querySelector('#set-autobrek')!.classList.contains('on'),
       autoStartFocus: backdrop.querySelector('#set-autofocus')!.classList.contains('on'),
-      alarmSound: backdrop.querySelector<HTMLButtonElement>('[data-alarm].active')?.dataset.alarm ?? state.settings.alarmSound,
-      ambientSound: backdrop.querySelector<HTMLButtonElement>('[data-ambient].active')?.dataset.ambient ?? state.settings.ambientSound,
+      alarmSound: backdrop.querySelector<HTMLSelectElement>('#alarm-select')?.value ?? state.settings.alarmSound,
+      ambientSound: backdrop.querySelector<HTMLSelectElement>('#ambient-select')?.value ?? state.settings.ambientSound,
       theme: isCustom ? 'custom' : activeTheme,
       customColor: isCustom ? customColorInput.value : state.settings.customColor,
       backgroundPattern: backdrop.querySelector<HTMLButtonElement>('[data-pattern].active')?.dataset.pattern ?? state.settings.backgroundPattern,
@@ -958,6 +997,7 @@ el.newTask.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') void submitTask()
 })
 el.addTask.addEventListener('click', () => void submitTask())
+bindTaskTabs()
 
 function submitTask(): void {
   const title = el.newTask.value
