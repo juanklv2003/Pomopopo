@@ -3,6 +3,7 @@ import '@phosphor-icons/web/bold'
 import { api } from './lib/api'
 import { AudioEngine, ALARMS, AMBIENT } from './lib/audio'
 import { THEMES, getTheme, applyTheme, darkenColor } from './lib/themes'
+import { closePiP, isPiPOpen, isPiPSupported, openPiP, pipRender } from './lib/pip'
 import type { Mode, Settings, Task } from './lib/types'
 import { DEFAULT_SETTINGS } from './lib/types'
 
@@ -44,6 +45,18 @@ function modeLabel(m: Mode): string {
   if (m === 'focus') return 'Pomodoro'
   if (m === 'shortBreak') return 'Descanso corto'
   return 'Descanso largo'
+}
+
+// Aviso al terminar una fase cuando la pestaña no esta visible.
+// Solo dispara si el usuario ya concedio permiso (no se pide aqui).
+function notifyPhaseEnd(title: string, body: string): void {
+  try {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification(title, { body })
+    }
+  } catch {
+    // Las notificaciones son un respaldo opcional: nunca deben romper el flujo.
+  }
 }
 
 // Contenedor raíz
@@ -89,6 +102,9 @@ app.innerHTML = `
       <button class="main-btn" id="btn-toggle">Comenzar</button>
       <button class="ctrl-btn" id="btn-skip" title="Saltar"><i class="ph-bold ph-skip-forward"></i></button>
     </div>
+    <div class="pip-row">
+      <button class="pip-open-btn" id="btn-pip" title="Ventana flotante"><i class="ph-bold ph-picture-in-picture"></i><span>Ventana flotante</span></button>
+    </div>
   </section>
 
   <section class="tasks-card">
@@ -123,6 +139,7 @@ const el = {
   btnToggle: document.querySelector<HTMLButtonElement>('#btn-toggle') as HTMLButtonElement,
   btnReset: document.querySelector<HTMLButtonElement>('#btn-reset') as HTMLButtonElement,
   btnSkip: document.querySelector<HTMLButtonElement>('#btn-skip') as HTMLButtonElement,
+  btnPip: document.querySelector<HTMLButtonElement>('#btn-pip') as HTMLButtonElement,
   btnSettings: document.querySelector<HTMLButtonElement>('#btn-settings') as HTMLButtonElement,
   sessionNum: document.querySelector<HTMLElement>('#session-num') as HTMLElement,
   taskList: document.querySelector<HTMLUListElement>('#task-list') as HTMLUListElement,
@@ -162,6 +179,17 @@ function renderTimer(): void {
   el.currentTask.textContent = t ? `#${t.estimatedPomodoros - t.completedPomodoros} — ${t.title}` : 'Selecciona o crea una tarea'
   document.title = `${fmt(state.timeLeft)} · ${modeLabel(state.mode)} — Pomopopo`
   el.sessionNum.textContent = String(state.sessionsToday)
+  const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim() || '#ba4949'
+  const brandDark =
+    getComputedStyle(document.documentElement).getPropertyValue('--brand-dark').trim() || '#8f3d3d'
+  pipRender({
+    time: fmt(state.timeLeft),
+    modeLabel: modeLabel(state.mode),
+    toggleLabel: state.running ? 'Pausar' : 'Comenzar',
+    running: state.running,
+    brand,
+    brandDark,
+  })
 }
 const TASKS_PER_PAGE = 4
 
@@ -431,6 +459,8 @@ function completeSession(opts: { skip?: boolean } = {}): void {
   window.clearInterval(state.timerId)
 
   render()
+
+  notifyPhaseEnd('Pomopopo', `Terminó el periodo. Siguiente: ${modeLabel(state.mode)}.`)
 
   // Auto-arranque solo en finalización normal (al llegar a 0), no al saltar
   if (!opts.skip) {
@@ -867,13 +897,59 @@ function applyBackgroundPattern(pattern: string): void {
 }
 
 // ---------- Arranque / inicialización ----------
-el.btnToggle.addEventListener('click', () => (state.running ? stopTimer() : startTimer()))
+function currentSnapshot(): { time: string; modeLabel: string; toggleLabel: string; running: boolean; brand: string; brandDark: string } {
+  const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim() || '#ba4949'
+  const brandDark =
+    getComputedStyle(document.documentElement).getPropertyValue('--brand-dark').trim() || '#8f3d3d'
+  return {
+    time: fmt(state.timeLeft),
+    modeLabel: modeLabel(state.mode),
+    toggleLabel: state.running ? 'Pausar' : 'Comenzar',
+    running: state.running,
+    brand,
+    brandDark,
+  }
+}
+
+function refreshPipButton(): void {
+  el.btnPip.classList.toggle('active', isPiPOpen())
+  el.btnPip.setAttribute('aria-pressed', isPiPOpen() ? 'true' : 'false')
+}
+
+// La ventana flotante es opt-in y debe abrirse dentro del gesto del usuario.
+el.btnPip.addEventListener('click', () => {
+  if (!isPiPSupported()) return
+  if (isPiPOpen()) {
+    closePiP()
+    refreshPipButton()
+    return
+  }
+  void openPiP(
+    {
+      onToggle: () => (state.running ? stopTimer() : startTimer()),
+      onClose: () => refreshPipButton(),
+    },
+    currentSnapshot(),
+  ).then((ok) => {
+    if (ok) refreshPipButton()
+  })
+})
+if (!isPiPSupported()) el.btnPip.classList.add('hidden')
+
+el.btnToggle.addEventListener('click', () => {
+  // Respaldo sin PiP: pedir permiso de notificaciones en el gesto del usuario.
+  if (!isPiPSupported() && 'Notification' in window && Notification.permission === 'default') {
+    void Notification.requestPermission().catch(() => {})
+  }
+  return state.running ? stopTimer() : startTimer()
+})
 el.btnReset.addEventListener('click', resetTimer)
 el.btnSkip.addEventListener('click', () => {
   if (!state.running && state.timeLeft === state.total) return
   // Salta a la siguiente fase (descanso) pero la deja PARADA, sin que corra el tiempo
   completeSession({ skip: true })
 })
+window.addEventListener('pagehide', () => closePiP())
 el.btnSettings.addEventListener('click', openSettings)
 el.newTask.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') void submitTask()
