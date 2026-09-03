@@ -4,8 +4,10 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const DATA_DIR = join(__dirname, '..', 'data')
-const DATA_FILE = join(DATA_DIR, 'db.json')
+// DB_PATH permite apuntar al disco persistente de Render.
+// Por defecto mantiene backend/data/db.json para desarrollo local.
+const DATA_FILE = process.env.DB_PATH || join(__dirname, '..', 'data', 'db.json')
+const DATA_DIR = dirname(DATA_FILE)
 
 const DEFAULT_SETTINGS = {
   focusMinutes: 25,

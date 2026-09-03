@@ -1,0 +1,23 @@
+# Blueprint de Render para el backend Node.js de Pomopopo.
+# Sin valores secretos: ALLOWED_ORIGINS se define en el dashboard de Render.
+services:
+  - type: web
+    name: pomopopo-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    autoDeploy: true
+    envVars:
+      # Render inyecta PORT automáticamente; se declara para documentar su uso.
+      - key: PORT
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: DB_PATH
+        value: /opt/render/project/src/backend/data/db.json
+    disk:
+      name: pomopopo-data
+      # Disco persistente sobre backend/data del repo.
+      mountPath: /opt/render/project/src/backend/data
+      sizeGB: 1

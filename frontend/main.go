@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 )
 
 var (
@@ -19,12 +20,28 @@ var (
 func main() {
 	flag.Parse()
 
+	// PORT y BACKEND_URL tienen prioridad sobre los flags -listen/-backend.
+	// Así funciona en Render sin cambiar nada y en local siguen valiendo los flags.
+	addr := *listenAddr
+	if port := strings.TrimSpace(os.Getenv("PORT")); port != "" {
+		if strings.HasPrefix(port, ":") {
+			addr = port
+		} else {
+			addr = ":" + port
+		}
+	}
+
+	backendStr := *backendURL
+	if envBackend := strings.TrimSpace(os.Getenv("BACKEND_URL")); envBackend != "" {
+		backendStr = envBackend
+	}
+
 	distDir, err := filepath.Abs("dist")
 	if err != nil {
 		log.Fatalf("no se pudo resolver el directorio dist: %v", err)
 	}
 
-	backend, err := url.Parse(*backendURL)
+	backend, err := url.Parse(backendStr)
 	if err != nil {
 		log.Fatalf("backend URL inválida: %v", err)
 	}
@@ -56,9 +73,9 @@ func main() {
 		http.ServeFile(w, r, filepath.Join(distDir, "index.html"))
 	})
 
-	log.Printf("Pobomopopo frontend (Go) sirviendo %s en %s", distDir, *listenAddr)
+	log.Printf("Pobomopopo frontend (Go) sirviendo %s en %s", distDir, addr)
 	log.Printf("Proxy /api -> %s", backend)
-	log.Fatal(http.ListenAndServe(*listenAddr, mux))
+	log.Fatal(http.ListenAndServe(addr, mux))
 }
 
 func proxyTarget(u *url.URL) *url.URL { return u }

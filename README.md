@@ -61,6 +61,31 @@ Abre **http://localhost:8080** en el navegador.
 3. Al sonar la alarma, se registra 1 pomodoro completado para la tarea activa.
 4. Cada 4 pomodoros (configurable) entra el descanso largo.
 
+## Deploy
+
+Plan: frontend estático en **Vercel**, backend Node en **Render** con disco persistente.
+
+### Frontend (Vercel)
+
+1. Carpeta a desplegar: `frontend/` (el build genera `frontend/dist`).
+2. En el dashboard de Vercel define la variable:
+   - `BACKEND_URL` = URL pública del backend en Render (ej. `https://pomopopo-backend.onrender.com`).
+3. `frontend/vercel.json` ya trae:
+   - rewrite `/api/:path*` → `${BACKEND_URL}/api/:path*`,
+   - fallback SPA a `/index.html`,
+   - cabeceras `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options: DENY` y `Permissions-Policy` mínima.
+4. Si la interpolación `${BACKEND_URL}` no se resolviera en tu cuenta, configura el mismo rewrite a mano en el dashboard (Source `/api/:path*`, Destination `https://<tu-backend>/api/:path*`).
+
+### Backend (Render)
+
+1. Conecta el repo y usa el blueprint `render.yaml` (raíz del repo).
+2. Servicio `pomopopo-backend`: `build npm install`, `start npm start`, `rootDir backend`.
+3. Variables en el dashboard (sin valores en el repo):
+   - `ALLOWED_ORIGINS` = URL pública de Vercel (ej. `https://pomopopo.vercel.app`),
+   - `DB_PATH` = `/opt/render/project/src/backend/data/db.json`,
+   - `PORT` lo inyecta Render automáticamente.
+4. Disco persistente `pomopopo-data` montado en `backend/data` (1 GB).
+
 ## Estructura
 
 ```

@@ -1,5 +1,6 @@
 import express from 'express'
 import cors from 'cors'
+import helmet from 'helmet'
 import { Store } from './store.js'
 
 const app = express()
@@ -7,7 +8,28 @@ const store = new Store()
 
 const PORT = process.env.PORT || 4000
 
-app.use(cors())
+// Render corre detrás de un proxy: necesario para IPs correctas y cookies seguras.
+app.set('trust proxy', 1)
+app.use(helmet())
+
+// CORS con allowlist. En local permite Vite (5173) y Go (8080).
+// En producción define ALLOWED_ORIGINS="https://tu-front.vercel.app,..."
+// Nunca se usa cors() abierto cuando la variable está definida.
+const defaultOrigins = ['http://localhost:5173', 'http://localhost:8080']
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean)
+  : defaultOrigins
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      // Peticiones sin Origin (curl, healthchecks, mismo origen) se permiten.
+      if (!origin) return callback(null, true)
+      if (allowedOrigins.includes(origin)) return callback(null, true)
+      return callback(new Error('Origen no permitido por CORS'))
+    },
+  })
+)
 app.use(express.json())
 
 // ---------- Tareas ----------
