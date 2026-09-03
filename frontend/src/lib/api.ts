@@ -1,6 +1,9 @@
 import type { Settings, Task } from './types'
 
-const BASE = '/api'
+// En producción concreto (Vercel) se usa VITE_BACKEND_URL para llamar al backend
+// directamente (CORS ya configurado en Render). En local sin variable se usa el
+// proxy /api de Vite hacia localhost:4000.
+const BASE = (import.meta.env.VITE_BACKEND_URL as string | undefined)?.replace(/\/+$/, '') || '/api'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
