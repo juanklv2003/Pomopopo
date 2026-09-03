@@ -68,13 +68,15 @@ Plan: frontend estático en **Vercel**, backend Node en **Render** con disco per
 ### Frontend (Vercel)
 
 1. Carpeta a desplegar: `frontend/` (el build genera `frontend/dist`).
-2. En el dashboard de Vercel define la variable:
-   - `BACKEND_URL` = URL pública del backend en Render (ej. `https://pomopopo-backend.onrender.com`).
-3. `frontend/vercel.json` ya trae:
-   - rewrite `/api/:path*` → `${BACKEND_URL}/api/:path*`,
-   - fallback SPA a `/index.html`,
-   - cabeceras `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options: DENY` y `Permissions-Policy` mínima.
-4. Si la interpolación `${BACKEND_URL}` no se resolviera en tu cuenta, configura el mismo rewrite a mano en el dashboard (Source `/api/:path*`, Destination `https://<tu-backend>/api/:path*`).
+2. En el dashboard de Vercel define la variable pública de build (Settings → Environment Variables):
+   - **Key**: `VITE_BACKEND_URL`
+   - **Value**: URL pública del backend en Render (ej. `https://pomopopo.onrender.com`), **sin** `/api`.
+   - **Visibility**: `config` (nunca `secret`, porque si empieza por `VITE_` es pública por definición).
+   - **Environments**: `Production` (+ Preview si se quiere).
+   - Tras guardar, haz **Redeploy** del último deployment.
+3. La app llama al backend **directamente** vía CORS (Render devuelve `Access-Control-Allow-Origin` para el dominio de Vercel). No hace falta rewrite de `/api`.
+4. `frontend/vercel.json` solo lleva el fallback SPA a `/index.html` y cabeceras de seguridad
+   (`X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options: DENY` y `Permissions-Policy` mínima).
 
 ### Backend (Render)
 
