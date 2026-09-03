@@ -599,6 +599,150 @@ function renderThemeGrid(backdrop: HTMLElement, s: Settings): void {
   })
 }
 
+interface SoundOptionDef {
+  id: string
+  label: string
+  icon: string
+}
+
+function soundDropdownHTML(
+  kind: 'alarm' | 'ambient',
+  options: SoundOptionDef[],
+  value: string,
+  label: string,
+): string {
+  const current = options.find((o) => o.id === value) ?? options[0]
+  return `
+    <div class="sound-dropdown" data-dropdown="${kind}">
+      <button type="button" class="dropdown-btn" id="${kind}-select"
+        aria-haspopup="listbox" aria-expanded="false" aria-controls="${kind}-listbox"
+        data-value="${current.id}" aria-label="${label}">
+        <span class="dropdown-value">
+          <span class="dropdown-icon"><i class="ph-bold ph-${current.icon}"></i></span>
+          <span class="dropdown-label">${current.label}</span>
+        </span>
+        <i class="ph-bold ph-caret-down dropdown-caret" aria-hidden="true"></i>
+      </button>
+      <ul class="dropdown-list" role="listbox" id="${kind}-listbox" aria-label="${label}" hidden>
+        ${options.map((o) => `
+          <li role="option" id="${kind}-opt-${o.id}" data-value="${o.id}"
+            aria-selected="${o.id === current.id}" class="dropdown-option${o.id === current.id ? ' selected' : ''}">
+            <span class="dropdown-icon"><i class="ph-bold ph-${o.icon}"></i></span>
+            <span class="dropdown-label">${o.label}</span>
+            <i class="ph-bold ph-check dropdown-check" aria-hidden="true"></i>
+          </li>`).join('')}
+      </ul>
+    </div>`
+}
+
+function closeAllDropdowns(backdrop: HTMLElement, except?: HTMLElement): void {
+  backdrop.querySelectorAll<HTMLElement>('.sound-dropdown').forEach((root) => {
+    if (root === except) return
+    const btn = root.querySelector<HTMLButtonElement>('.dropdown-btn')!
+    const list = root.querySelector<HTMLUListElement>('.dropdown-list')!
+    btn.setAttribute('aria-expanded', 'false')
+    btn.removeAttribute('aria-activedescendant')
+    list.hidden = true
+    list.querySelectorAll('.dropdown-option.highlighted').forEach((x) => x.classList.remove('highlighted'))
+  })
+}
+
+function attachSoundDropdown(
+  backdrop: HTMLElement,
+  kind: 'alarm' | 'ambient',
+  options: SoundOptionDef[],
+  onPick: (id: string) => void,
+): void {
+  const root = backdrop.querySelector<HTMLElement>(`[data-dropdown="${kind}"]`)
+  if (!root) return
+  const btn = root.querySelector<HTMLButtonElement>('.dropdown-btn')!
+  const list = root.querySelector<HTMLUListElement>('.dropdown-list')!
+  const items = Array.from(list.querySelectorAll<HTMLElement>('.dropdown-option'))
+  let hi = Math.max(0, items.findIndex((li) => li.dataset.value === btn.dataset.value))
+  const isOpen = (): boolean => btn.getAttribute('aria-expanded') === 'true'
+
+  const paint = (): void => {
+    items.forEach((li, i) => li.classList.toggle('highlighted', isOpen() && i === hi))
+    if (isOpen()) btn.setAttribute('aria-activedescendant', `${kind}-opt-${options[hi].id}`)
+    else btn.removeAttribute('aria-activedescendant')
+  }
+
+  const open = (): void => {
+    closeAllDropdowns(backdrop, root)
+    hi = Math.max(0, items.findIndex((li) => li.dataset.value === btn.dataset.value))
+    btn.setAttribute('aria-expanded', 'true')
+    list.hidden = false
+    paint()
+  }
+
+  const close = (): void => {
+    btn.setAttribute('aria-expanded', 'false')
+    btn.removeAttribute('aria-activedescendant')
+    list.hidden = true
+    items.forEach((li) => li.classList.remove('highlighted'))
+  }
+
+  const select = (index: number): void => {
+    const opt = options[index]
+    if (!opt) return
+    btn.dataset.value = opt.id
+    const value = btn.querySelector('.dropdown-value')!
+    value.innerHTML = `<span class="dropdown-icon"><i class="ph-bold ph-${opt.icon}"></i></span><span class="dropdown-label">${opt.label}</span>`
+    items.forEach((li) => {
+      const active = li.dataset.value === opt.id
+      li.classList.toggle('selected', active)
+      li.setAttribute('aria-selected', String(active))
+    })
+    close()
+    btn.focus({ preventScroll: true })
+    onPick(opt.id)
+  }
+
+  btn.addEventListener('click', () => {
+    if (isOpen()) close()
+    else open()
+  })
+
+  btn.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      const delta = e.key === 'ArrowDown' ? 1 : -1
+      if (!isOpen()) open()
+      else {
+        hi = (hi + delta + items.length) % items.length
+        paint()
+      }
+    } else if (e.key === 'Home' && isOpen()) {
+      e.preventDefault()
+      hi = 0
+      paint()
+    } else if (e.key === 'End' && isOpen()) {
+      e.preventDefault()
+      hi = items.length - 1
+      paint()
+    } else if ((e.key === 'Enter' || e.key === ' ') && isOpen()) {
+      e.preventDefault()
+      select(hi)
+    } else if ((e.key === 'Enter' || e.key === ' ') && !isOpen()) {
+      e.preventDefault()
+      open()
+    } else if (e.key === 'Escape' && isOpen()) {
+      e.stopPropagation()
+      close()
+    } else if (e.key === 'Tab' && isOpen()) {
+      close()
+    }
+  })
+
+  items.forEach((li, i) => {
+    li.addEventListener('mouseenter', () => {
+      hi = i
+      paint()
+    })
+    li.addEventListener('click', () => select(i))
+  })
+}
+
 function openSettings(): void {
   const s = state.settings
   const origTheme = s.theme
@@ -658,11 +802,7 @@ function openSettings(): void {
           <span class="vol-val" id="set-alarm-vol-val">${s.alarmVolume}%</span>
         </div>
         <div class="select-row">
-          <span class="select-icon" id="alarm-icon"><i class="ph-bold ph-${ALARMS.find((a) => a.id === s.alarmSound)?.icon ?? 'bell-ringing'}"></i></span>
-          <select class="sound-select" id="alarm-select" aria-label="Sonido de alarma">
-            ${ALARMS.map((a) => `
-              <option value="${a.id}" ${s.alarmSound === a.id ? 'selected' : ''}>${a.label}</option>`).join('')}
-          </select>
+          ${soundDropdownHTML('alarm', ALARMS, s.alarmSound, 'Sonido de alarma')}
         </div>
       </div>
 
@@ -674,11 +814,7 @@ function openSettings(): void {
           <span class="vol-val" id="set-ambient-vol-val">${s.ambientVolume}%</span>
         </div>
         <div class="select-row">
-          <span class="select-icon" id="ambient-icon"><i class="ph-bold ph-${AMBIENT.find((a) => a.id === s.ambientSound)?.icon ?? 'speaker-high'}"></i></span>
-          <select class="sound-select" id="ambient-select" aria-label="Sonido ambiente">
-            ${AMBIENT.map((a) => `
-              <option value="${a.id}" ${s.ambientSound === a.id ? 'selected' : ''}>${a.label}</option>`).join('')}
-          </select>
+          ${soundDropdownHTML('ambient', AMBIENT, s.ambientSound, 'Sonido ambiente')}
         </div>
       </div>
 
@@ -727,6 +863,7 @@ function openSettings(): void {
   requestAnimationFrame(() => requestAnimationFrame(() => backdrop.classList.add('open')))
 
   // Cierre con transición de salida (desliza hacia la derecha y desvanece)
+  let ambientPreviewTimer = 0
   const close = (revert = false) => {
     clearTimeout(ambientPreviewTimer)
     if (revert) {
@@ -745,29 +882,20 @@ function openSettings(): void {
     setTimeout(() => backdrop.remove(), 400)
   }
   backdrop.addEventListener('click', (e) => {
+    if (!(e.target as HTMLElement).closest('.sound-dropdown')) closeAllDropdowns(backdrop)
     if (e.target === backdrop) close(true)
   })
   backdrop.querySelector<HTMLButtonElement>('#modal-close')!.addEventListener('click', () => close(true))
   backdrop.querySelector<HTMLButtonElement>('#modal-cancel')!.addEventListener('click', () => close(true))
 
-  // Icono + preview al cambiar el desplegable de alarma
-  const alarmSelect = backdrop.querySelector<HTMLSelectElement>('#alarm-select')!
-  const alarmIcon = backdrop.querySelector<HTMLElement>('#alarm-icon')!
-  alarmSelect.addEventListener('change', () => {
-    const def = ALARMS.find((a) => a.id === alarmSelect.value)
-    alarmIcon.innerHTML = `<i class="ph-bold ph-${def?.icon ?? 'bell-ringing'}"></i>`
-    audio.previewAlarm(alarmSelect.value)
+  // Preview de alarma al elegir opción
+  attachSoundDropdown(backdrop, 'alarm', ALARMS, (id) => {
+    audio.previewAlarm(id)
   })
 
-  // Preview de ambiente al cambiar (reproduce 3s y para)
-  let ambientPreviewTimer = 0
-  const ambientSelect = backdrop.querySelector<HTMLSelectElement>('#ambient-select')!
-  const ambientIcon = backdrop.querySelector<HTMLElement>('#ambient-icon')!
-  ambientSelect.addEventListener('change', () => {
+  // Preview de ambiente al elegir opción (reproduce 3s y para)
+  attachSoundDropdown(backdrop, 'ambient', AMBIENT, (id) => {
     clearTimeout(ambientPreviewTimer)
-    const id = ambientSelect.value
-    const def = AMBIENT.find((a) => a.id === id)
-    ambientIcon.innerHTML = `<i class="ph-bold ph-${def?.icon ?? 'speaker-high'}"></i>`
     if (id === 'off') {
       audio.stopAmbient()
     } else {
@@ -892,8 +1020,8 @@ function openSettings(): void {
       longBreakInterval: Math.max(2, Number((backdrop.querySelector('#set-interval') as HTMLInputElement).value) || 4),
       autoStartBreaks: backdrop.querySelector('#set-autobrek')!.classList.contains('on'),
       autoStartFocus: backdrop.querySelector('#set-autofocus')!.classList.contains('on'),
-      alarmSound: backdrop.querySelector<HTMLSelectElement>('#alarm-select')?.value ?? state.settings.alarmSound,
-      ambientSound: backdrop.querySelector<HTMLSelectElement>('#ambient-select')?.value ?? state.settings.ambientSound,
+      alarmSound: backdrop.querySelector<HTMLButtonElement>('#alarm-select')?.dataset.value ?? state.settings.alarmSound,
+      ambientSound: backdrop.querySelector<HTMLButtonElement>('#ambient-select')?.dataset.value ?? state.settings.ambientSound,
       theme: isCustom ? 'custom' : activeTheme,
       customColor: isCustom ? customColorInput.value : state.settings.customColor,
       backgroundPattern: backdrop.querySelector<HTMLButtonElement>('[data-pattern].active')?.dataset.pattern ?? state.settings.backgroundPattern,
