@@ -82,6 +82,15 @@ app.post('/api/stats/sessions', (_req, res) => {
   res.json({ sessionsDone: count })
 })
 
+// ---------- Salud (sin DB ni disco: para warmup y healthchecks) ----------
+app.get('/health', (_req, res) => {
+  res.json({ ok: true })
+})
+
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true })
+})
+
 // Fallback JSON amigable
 app.use((_req, res) => {
   res.status(404).json({ error: 'No encontrado' })

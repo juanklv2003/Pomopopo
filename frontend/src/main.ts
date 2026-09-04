@@ -1134,21 +1134,45 @@ function submitTask(): void {
 }
 
 async function bootstrap(): Promise<void> {
+  // Visible feedback while the backend wakes up (cold start). The UI stays
+  // usable with defaults and hydrates below as each endpoint resolves.
+  const status = document.createElement('p')
+  status.className = 'sync-status'
+  status.setAttribute('role', 'status')
+  status.setAttribute('aria-live', 'polite')
+  status.textContent = 'Despertando servidor, puede tardar hasta un minuto la primera vez…'
+  app.prepend(status)
+  render()
+
   try {
-    const [tasks, settings, sessions] = await Promise.all([
+    const [tasksRes, settingsRes, sessionsRes] = await Promise.allSettled([
       api.getTasks(),
       api.getSettings(),
       api.getSessions(),
     ])
-    state.tasks = tasks
-    state.settings = { ...DEFAULT_SETTINGS, ...settings }
-    // Migraciones de ids antiguos (ajustes ya guardados siguen funcionando)
-    if (state.settings.ambientSound === 'cafe') state.settings.ambientSound = 'fireplace'
-    if (state.settings.backgroundPattern === 'butterflies') state.settings.backgroundPattern = 'flowers'
-    state.sessionsToday = sessions.sessionsDone
-    state.activeTaskId = tasks.find((t) => !t.done)?.id ?? null
+    if (tasksRes.status === 'fulfilled') {
+      state.tasks = tasksRes.value
+      state.activeTaskId = tasksRes.value.find((t) => !t.done)?.id ?? null
+    } else {
+      console.warn('No se pudieron cargar las tareas, se usan valores por defecto.', tasksRes.reason)
+    }
+    if (settingsRes.status === 'fulfilled') {
+      state.settings = { ...DEFAULT_SETTINGS, ...settingsRes.value }
+      // Migraciones de ids antiguos (ajustes ya guardados siguen funcionando)
+      if (state.settings.ambientSound === 'cafe') state.settings.ambientSound = 'fireplace'
+      if (state.settings.backgroundPattern === 'butterflies') state.settings.backgroundPattern = 'flowers'
+    } else {
+      console.warn('No se pudo cargar la configuración, se usan valores por defecto.', settingsRes.reason)
+    }
+    if (sessionsRes.status === 'fulfilled') {
+      state.sessionsToday = sessionsRes.value.sessionsDone
+    } else {
+      console.warn('No se pudieron cargar las sesiones, se usan valores por defecto.', sessionsRes.reason)
+    }
   } catch (err) {
     console.warn('No se pudo cargar la API, se usan valores por defecto.', err)
+  } finally {
+    status.remove()
   }
 
   // Aplica ajustes guardados
