@@ -503,11 +503,6 @@ function completeSession(opts: { skip?: boolean } = {}): void {
     if (t && !t.done) {
       t.completedPomodoros += 1
       void api.updateTask(t.id, { completedPomodoros: t.completedPomodoros })
-      if (t.completedPomodoros >= t.estimatedPomodoros) {
-        void api.updateTask(t.id, { done: true })
-        t.done = true
-        if (state.activeTaskId === t.id) state.activeTaskId = null
-      }
       persistLocal()
     }
 
