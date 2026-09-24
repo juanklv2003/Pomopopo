@@ -4,6 +4,7 @@ import { api } from './lib/api'
 import { AudioEngine, ALARMS, AMBIENT } from './lib/audio'
 import { THEMES, getTheme, applyTheme, darkenColor } from './lib/themes'
 import { closePiP, isPiPOpen, isPiPSupported, openPiP, pipRender } from './lib/pip'
+import { loadPersistedClientState, savePersistedClientState } from './lib/localStore'
 import type { Mode, Settings, Task } from './lib/types'
 import { DEFAULT_SETTINGS } from './lib/types'
 
@@ -46,6 +47,19 @@ function modeLabel(m: Mode): string {
   if (m === 'focus') return 'Pomodoro'
   if (m === 'shortBreak') return 'Descanso corto'
   return 'Descanso largo'
+}
+
+function migrateLegacySettings(): void {
+  if (state.settings.ambientSound === 'cafe') state.settings.ambientSound = 'fireplace'
+  if (state.settings.backgroundPattern === 'butterflies') state.settings.backgroundPattern = 'flowers'
+}
+
+function persistLocal(): void {
+  savePersistedClientState({
+    tasks: state.tasks,
+    settings: state.settings,
+    activeTaskId: state.activeTaskId,
+  })
 }
 
 // Aviso al terminar una fase cuando la pestaña no esta visible.
@@ -370,6 +384,7 @@ async function addTask(title: string): Promise<void> {
     const open = state.tasks.filter((tk) => !tk.done)
     state.taskPage = Math.max(0, Math.ceil(open.length / TASKS_PER_PAGE) - 1)
     state.taskTab = 'active'
+    persistLocal()
     renderTasks()
     renderTimer()
   } catch (err) {
@@ -385,6 +400,7 @@ async function removeTask(id: string): Promise<void> {
   }
   state.tasks = state.tasks.filter((t) => t.id !== id)
   if (state.activeTaskId === id) state.activeTaskId = null
+  persistLocal()
   renderTasks()
   renderTimer()
 }
@@ -395,6 +411,7 @@ async function toggleDone(id: string): Promise<void> {
   const next = !t.done
   Object.assign(t, await api.updateTask(id, { done: next }))
   if (next && state.activeTaskId === id) state.activeTaskId = null
+  persistLocal()
   renderTasks()
   renderTimer()
 }
@@ -404,6 +421,7 @@ function decEst(id: string): void {
   if (!t || t.estimatedPomodoros <= 1) return
   t.estimatedPomodoros -= 1
   void api.updateTask(id, { estimatedPomodoros: t.estimatedPomodoros })
+  persistLocal()
   renderTasks()
 }
 
@@ -412,11 +430,13 @@ function incEst(id: string): void {
   if (!t) return
   t.estimatedPomodoros += 1
   void api.updateTask(id, { estimatedPomodoros: t.estimatedPomodoros })
+  persistLocal()
   renderTasks()
 }
 
 function setActive(id: string): void {
   state.activeTaskId = id
+  persistLocal()
   renderTasks()
   renderTimer()
 }
@@ -488,6 +508,7 @@ function completeSession(opts: { skip?: boolean } = {}): void {
         t.done = true
         if (state.activeTaskId === t.id) state.activeTaskId = null
       }
+      persistLocal()
     }
 
     audio.playAlarm(state.settings.alarmSound)
@@ -568,6 +589,7 @@ function renderThemeGrid(backdrop: HTMLElement, s: Settings): void {
       if (!hidden.includes(id)) {
         hidden.push(id)
         state.settings.hiddenThemes = hidden
+        persistLocal()
         void api.saveSettings(state.settings).catch(() => {})
         renderThemeGrid(backdrop, s)
       }
@@ -593,6 +615,7 @@ function renderThemeGrid(backdrop: HTMLElement, s: Settings): void {
       e.stopPropagation()
       const hex = btn.dataset.delColor!
       state.settings.savedColors = (state.settings.savedColors || []).filter((c) => c !== hex)
+      persistLocal()
       void api.saveSettings(state.settings).catch(() => {})
       renderThemeGrid(backdrop, s)
     })
@@ -926,6 +949,7 @@ function openSettings(): void {
       if (!hidden.includes(id)) {
         hidden.push(id)
         state.settings.hiddenThemes = hidden
+        persistLocal()
         void api.saveSettings(state.settings).catch(() => {})
         renderThemeGrid(backdrop, s)
       }
@@ -950,6 +974,7 @@ function openSettings(): void {
     if (!colors.includes(hex)) {
       colors.push(hex)
       state.settings.savedColors = colors
+      persistLocal()
       void api.saveSettings(state.settings).catch(() => {})
       renderThemeGrid(backdrop, s)
     }
@@ -975,6 +1000,7 @@ function openSettings(): void {
       e.stopPropagation()
       const hex = btn.dataset.delColor!
       state.settings.savedColors = (state.settings.savedColors || []).filter((c) => c !== hex)
+      persistLocal()
       void api.saveSettings(state.settings).catch(() => {})
       renderThemeGrid(backdrop, s)
     })
@@ -1041,6 +1067,7 @@ function openSettings(): void {
 
 function applySettings(s: Settings): void {
   state.settings = { ...s }
+  persistLocal()
   const theme = getTheme(s.theme, s.customColor)
   applyTheme(theme.brand, theme.dark)
   applyBackgroundPattern(s.backgroundPattern)
@@ -1134,6 +1161,16 @@ function submitTask(): void {
 }
 
 async function bootstrap(): Promise<void> {
+  const local = loadPersistedClientState()
+  if (local) {
+    state.tasks = local.tasks
+    state.settings = { ...DEFAULT_SETTINGS, ...local.settings }
+    migrateLegacySettings()
+    state.activeTaskId =
+      local.activeTaskId ?? local.tasks.find((t) => !t.done)?.id ?? null
+    applySettings(state.settings)
+  }
+
   // Visible feedback while the backend wakes up (cold start). The UI stays
   // usable with defaults and hydrates below as each endpoint resolves.
   const status = document.createElement('p')
@@ -1142,7 +1179,7 @@ async function bootstrap(): Promise<void> {
   status.setAttribute('aria-live', 'polite')
   status.textContent = 'Despertando servidor, puede tardar hasta un minuto la primera vez…'
   app.prepend(status)
-  render()
+  if (!local) render()
 
   try {
     const [tasksRes, settingsRes, sessionsRes] = await Promise.allSettled([
@@ -1150,19 +1187,19 @@ async function bootstrap(): Promise<void> {
       api.getSettings(),
       api.getSessions(),
     ])
-    if (tasksRes.status === 'fulfilled') {
-      state.tasks = tasksRes.value
-      state.activeTaskId = tasksRes.value.find((t) => !t.done)?.id ?? null
-    } else {
-      console.warn('No se pudieron cargar las tareas, se usan valores por defecto.', tasksRes.reason)
-    }
-    if (settingsRes.status === 'fulfilled') {
-      state.settings = { ...DEFAULT_SETTINGS, ...settingsRes.value }
-      // Migraciones de ids antiguos (ajustes ya guardados siguen funcionando)
-      if (state.settings.ambientSound === 'cafe') state.settings.ambientSound = 'fireplace'
-      if (state.settings.backgroundPattern === 'butterflies') state.settings.backgroundPattern = 'flowers'
-    } else {
-      console.warn('No se pudo cargar la configuración, se usan valores por defecto.', settingsRes.reason)
+    if (!local) {
+      if (tasksRes.status === 'fulfilled') {
+        state.tasks = tasksRes.value
+        state.activeTaskId = tasksRes.value.find((t) => !t.done)?.id ?? null
+      } else {
+        console.warn('No se pudieron cargar las tareas, se usan valores por defecto.', tasksRes.reason)
+      }
+      if (settingsRes.status === 'fulfilled') {
+        state.settings = { ...DEFAULT_SETTINGS, ...settingsRes.value }
+        migrateLegacySettings()
+      } else {
+        console.warn('No se pudo cargar la configuración, se usan valores por defecto.', settingsRes.reason)
+      }
     }
     if (sessionsRes.status === 'fulfilled') {
       state.sessionsToday = sessionsRes.value.sessionsDone
@@ -1175,16 +1212,18 @@ async function bootstrap(): Promise<void> {
     status.remove()
   }
 
-  // Aplica ajustes guardados
-  const theme = getTheme(state.settings.theme, state.settings.customColor)
-  applyTheme(theme.brand, theme.dark)
-  applyBackgroundPattern(state.settings.backgroundPattern)
-  audio.setAlarmVolume(state.settings.alarmVolume)
-  audio.setAmbientVolume(state.settings.ambientVolume)
-  state.mode = 'focus'
-  state.total = secondsForMode('focus', state.settings)
-  state.timeLeft = state.total
-  audio.setAmbient(state.settings.ambientSound)
+  if (!local) {
+    const theme = getTheme(state.settings.theme, state.settings.customColor)
+    applyTheme(theme.brand, theme.dark)
+    applyBackgroundPattern(state.settings.backgroundPattern)
+    audio.setAlarmVolume(state.settings.alarmVolume)
+    audio.setAmbientVolume(state.settings.ambientVolume)
+    state.mode = 'focus'
+    state.total = secondsForMode('focus', state.settings)
+    state.timeLeft = state.total
+    audio.setAmbient(state.settings.ambientSound)
+  }
+  persistLocal()
   render()
 }
 
