@@ -1,3 +1,4 @@
+import { normalizeHex } from './themes'
 import type { Settings, Task } from './types'
 import { DEFAULT_SETTINGS } from './types'
 
@@ -7,6 +8,15 @@ export interface PersistedClientState {
   tasks: Task[]
   settings: Settings
   activeTaskId: string | null
+}
+
+function normalizeStoredSettings(raw: Partial<Settings>): Settings {
+  const settings = { ...DEFAULT_SETTINGS, ...raw }
+  settings.customColor = normalizeHex(settings.customColor)
+  const saved = Array.isArray(settings.savedColors) ? settings.savedColors : []
+  settings.savedColors = [...new Set(saved.map((color) => normalizeHex(color)))]
+  settings.hiddenThemes = Array.isArray(settings.hiddenThemes) ? settings.hiddenThemes : []
+  return settings
 }
 
 function isTask(value: unknown): value is Task {
@@ -28,7 +38,7 @@ export function loadPersistedClientState(): PersistedClientState | null {
     const data = JSON.parse(raw) as Partial<PersistedClientState>
     if (!Array.isArray(data.tasks) || !data.settings || typeof data.settings !== 'object') return null
     const tasks = data.tasks.filter(isTask)
-    const settings = { ...DEFAULT_SETTINGS, ...data.settings }
+    const settings = normalizeStoredSettings(data.settings)
     let activeTaskId = typeof data.activeTaskId === 'string' ? data.activeTaskId : null
     if (activeTaskId && !tasks.some((t) => t.id === activeTaskId)) {
       activeTaskId = tasks.find((t) => !t.done)?.id ?? null

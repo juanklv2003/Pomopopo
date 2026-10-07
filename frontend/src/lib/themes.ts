@@ -15,9 +15,16 @@ export const THEMES: Theme[] = [
   { id: 'pink', label: 'Rosa', brand: '#d05072', dark: '#a83d5c' },
 ]
 
+/** `#rrggbb` en minúsculas. El input de color del navegador solo acepta ese formato. */
+export function normalizeHex(hex: string | undefined | null): string {
+  const match = (hex || '').trim().toLowerCase().match(/^#?([0-9a-f]{6})$/)
+  return match ? `#${match[1]}` : '#ba4949'
+}
+
 export function getTheme(id: string, customColor?: string): Theme {
-  if (id === 'custom' && customColor) {
-    return { id: 'custom', label: 'Personalizado', brand: customColor, dark: darkenColor(customColor) }
+  if (id === 'custom') {
+    const brand = normalizeHex(customColor)
+    return { id: 'custom', label: 'Personalizado', brand, dark: darkenColor(brand) }
   }
   return THEMES.find((t) => t.id === id) ?? THEMES[0]
 }

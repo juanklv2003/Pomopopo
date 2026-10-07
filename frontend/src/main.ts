@@ -2,7 +2,7 @@ import './style.css'
 import '@phosphor-icons/web/bold'
 import { api } from './lib/api'
 import { AudioEngine, ALARMS, AMBIENT } from './lib/audio'
-import { THEMES, getTheme, applyTheme, darkenColor } from './lib/themes'
+import { THEMES, getTheme, applyTheme, normalizeHex } from './lib/themes'
 import { closePiP, isPiPOpen, isPiPSupported, openPiP, pipRender } from './lib/pip'
 import { loadPersistedClientState, savePersistedClientState } from './lib/localStore'
 import type { Mode, Settings, Task } from './lib/types'
@@ -19,6 +19,7 @@ const state = {
   running: false,
   timeLeft: DEFAULT_SETTINGS.focusMinutes * 60,
   total: DEFAULT_SETTINGS.focusMinutes * 60,
+  endsAt: 0, // performance.now() en el que el periodo llega a 0; 0 si está parado
   cycle: 0, // pomodoros completados dentro del ciclo actual (para descanso largo)
   activeTaskId: null as string | null,
   timerId: 0 as number,
@@ -60,6 +61,38 @@ function persistLocal(): void {
     settings: state.settings,
     activeTaskId: state.activeTaskId,
   })
+}
+
+// Color personalizado que había al abrir ajustes. Se conserva en la paleta
+// solo cuando el usuario elige otro, para no perderlo al guardar el nuevo.
+let pendingCustomArchive: string | null = null
+
+function armPreviousColorArchive(): void {
+  pendingCustomArchive = state.settings.theme === 'custom' ? normalizeHex(state.settings.customColor) : null
+}
+
+function pushSavedColor(hex: string): void {
+  const color = normalizeHex(hex)
+  const colors = (state.settings.savedColors || []).map((c) => normalizeHex(c)).filter((c) => c !== color)
+  colors.push(color)
+  state.settings.savedColors = colors.slice(-12)
+}
+
+function archivePreviousColor(nextTheme: string, nextCustom?: string): void {
+  if (!pendingCustomArchive) return
+  const next = nextTheme === 'custom' ? normalizeHex(nextCustom || '') : ''
+  if (next === pendingCustomArchive) return
+  pushSavedColor(pendingCustomArchive)
+  pendingCustomArchive = null
+}
+
+function setActiveColor(themeId: string, customColor?: string): void {
+  archivePreviousColor(themeId, customColor)
+  state.settings.theme = themeId
+  if (themeId === 'custom' && customColor) state.settings.customColor = normalizeHex(customColor)
+  persistLocal()
+  const theme = getTheme(state.settings.theme, state.settings.customColor)
+  applyTheme(theme.brand, theme.dark)
 }
 
 // Aviso al terminar una fase cuando la pestaña no esta visible.
@@ -458,14 +491,22 @@ function switchMode(mode: Mode): void {
 function startTimer(): void {
   if (state.timeLeft <= 0) state.timeLeft = state.total
   state.running = true
+  // El fin se ancla al reloj real: en segundo plano el navegador espacia los
+  // ticks, pero el tiempo restante sigue siendo el que de verdad queda.
+  state.endsAt = performance.now() + state.timeLeft * 1000
   // Desbloquear el contexto de audio en el gesto del usuario
   audio.activate()
+  window.clearInterval(state.timerId)
   state.timerId = window.setInterval(tick, 250)
   render()
 }
 
 function stopTimer(): void {
+  if (state.running && state.endsAt) {
+    state.timeLeft = Math.max(0, (state.endsAt - performance.now()) / 1000)
+  }
   state.running = false
+  state.endsAt = 0
   window.clearInterval(state.timerId)
   render()
 }
@@ -477,14 +518,17 @@ function resetTimer(): void {
 }
 
 function tick(): void {
-  if (!state.running) return
-  state.timeLeft -= 0.25
-  if (state.timeLeft <= 0) {
+  if (!state.running || !state.endsAt) return
+  const left = (state.endsAt - performance.now()) / 1000
+  if (left <= 0) {
     state.timeLeft = 0
-    stopTimer()
+    state.endsAt = 0
+    state.running = false
+    window.clearInterval(state.timerId)
     completeSession()
     return
   }
+  state.timeLeft = left
   renderTimer()
 }
 
@@ -521,6 +565,7 @@ function completeSession(opts: { skip?: boolean } = {}): void {
   state.timeLeft = state.total
   // Asegurar que la siguiente fase queda parada (el salto no debe dejarla corriendo)
   state.running = false
+  state.endsAt = 0
   window.clearInterval(state.timerId)
 
   render()
@@ -547,31 +592,35 @@ function renderThemeGrid(backdrop: HTMLElement, s: Settings): void {
   const grid = backdrop.querySelector('#theme-grid')
   if (!grid) return
   const hidden = s.hiddenThemes || []
+  const currentCustom = normalizeHex(s.customColor)
+  const activeBrand = normalizeHex(getTheme(s.theme, s.customColor).brand)
   grid.innerHTML = `
     ${THEMES.filter((t) => !hidden.includes(t.id)).map((t) => `
       <span class="swatch theme-swatch ${s.theme === t.id ? 'active' : ''}" data-theme="${t.id}"
         style="background:${t.brand}" title="${t.label}">
         <button class="theme-del" data-theme-id="${t.id}"><i class="ph-bold ph-x"></i></button>
       </span>`).join('')}
-    ${(s.savedColors || []).map((c) => `
-      <span class="swatch saved-swatch ${s.theme === 'custom' && s.customColor === c ? 'active' : ''}"
-        data-saved-color="${c}" style="background:${c}" title="${c}">
-        <button class="saved-del" data-del-color="${c}"><i class="ph-bold ph-x"></i></button>
-      </span>`).join('')}`
+    ${(s.savedColors || []).map((c) => {
+      const hex = normalizeHex(c)
+      return `<span class="swatch saved-swatch ${s.theme === 'custom' && currentCustom === hex ? 'active' : ''}"
+        data-saved-color="${hex}" style="background:${hex}" title="${hex}">
+        <button class="saved-del" data-del-color="${hex}"><i class="ph-bold ph-x"></i></button>
+      </span>`
+    }).join('')}`
 
-  // Actualizar preview del picker
+  // El picker muestra el color que está aplicado, no uno anterior que ya no es el activo.
   const preview = backdrop.querySelector('.custom-preview') as HTMLElement | null
-  if (preview) preview.style.background = s.customColor || '#ba4949'
+  const input = backdrop.querySelector<HTMLInputElement>('#custom-color')
+  if (preview) preview.style.background = activeBrand
+  if (input && document.activeElement !== input) input.value = activeBrand
 
-  // Re-bind events
   grid.querySelectorAll<HTMLElement>('[data-theme]').forEach((b) => {
     b.addEventListener('click', (e) => {
       if ((e.target as HTMLElement).closest('.theme-del')) return
-      grid.querySelectorAll('[data-theme]').forEach((x) => x.classList.remove('active'))
-      grid.querySelectorAll('.saved-swatch').forEach((x) => x.classList.remove('active'))
-      b.classList.add('active')
-      const t = getTheme(b.dataset.theme!)
-      applyTheme(t.brand, t.dark)
+      const id = b.dataset.theme
+      if (!id) return
+      setActiveColor(id)
+      renderThemeGrid(backdrop, state.settings)
     })
   })
 
@@ -579,40 +628,38 @@ function renderThemeGrid(backdrop: HTMLElement, s: Settings): void {
     btn.addEventListener('click', (e) => {
       e.stopPropagation()
       const id = btn.dataset.themeId!
-      if (s.theme === id) return // no borrar el activo
-      const hidden = state.settings.hiddenThemes || []
-      if (!hidden.includes(id)) {
-        hidden.push(id)
-        state.settings.hiddenThemes = hidden
+      if (s.theme === id) return
+      const hiddenThemes = state.settings.hiddenThemes || []
+      if (!hiddenThemes.includes(id)) {
+        hiddenThemes.push(id)
+        state.settings.hiddenThemes = hiddenThemes
         persistLocal()
         void api.saveSettings(state.settings).catch(() => {})
-        renderThemeGrid(backdrop, s)
+        renderThemeGrid(backdrop, state.settings)
       }
     })
   })
 
-  grid.querySelectorAll<HTMLElement>('.saved-swatch').forEach((el) => {
-    el.addEventListener('click', (e) => {
+  grid.querySelectorAll<HTMLElement>('.saved-swatch').forEach((swatch) => {
+    swatch.addEventListener('click', (e) => {
       if ((e.target as HTMLElement).closest('.saved-del')) return
-      grid.querySelectorAll('[data-theme]').forEach((x) => x.classList.remove('active'))
-      grid.querySelectorAll('.saved-swatch').forEach((x) => x.classList.remove('active'))
-      el.classList.add('active')
-      const hex = el.dataset.savedColor!
-      const input = backdrop.querySelector<HTMLInputElement>('#custom-color')
-      if (input) input.value = hex
-      if (preview) preview.style.background = hex
-      applyTheme(hex, darkenColor(hex))
+      const hex = swatch.dataset.savedColor
+      if (!hex) return
+      setActiveColor('custom', hex)
+      renderThemeGrid(backdrop, state.settings)
     })
   })
 
   grid.querySelectorAll<HTMLElement>('.saved-del').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation()
-      const hex = btn.dataset.delColor!
-      state.settings.savedColors = (state.settings.savedColors || []).filter((c) => c !== hex)
+      const hex = normalizeHex(btn.dataset.delColor || '')
+      state.settings.savedColors = (state.settings.savedColors || [])
+        .map((c) => normalizeHex(c))
+        .filter((c) => c !== hex)
       persistLocal()
       void api.saveSettings(state.settings).catch(() => {})
-      renderThemeGrid(backdrop, s)
+      renderThemeGrid(backdrop, state.settings)
     })
   })
 }
@@ -763,10 +810,12 @@ function attachSoundDropdown(
 
 function openSettings(): void {
   const s = state.settings
-  const origTheme = s.theme
-  const origCustomColor = s.customColor
+  armPreviousColorArchive()
+  const activeBrand = normalizeHex(getTheme(s.theme, s.customColor).brand)
+  let origTheme = s.theme
+  let origCustomColor = normalizeHex(s.customColor)
   const origPattern = s.backgroundPattern
-  const origSavedColors = [...(s.savedColors || [])]
+  let origSavedColors = [...(s.savedColors || [])].map((c) => normalizeHex(c))
   const origHiddenThemes = [...(s.hiddenThemes || [])]
   const origAlarmVol = s.alarmVolume
   const origAmbientVol = s.ambientVolume
@@ -838,22 +887,11 @@ function openSettings(): void {
 
       <div class="setting-group">
         <h3>Tema (color)</h3>
-        <div class="theme-grid" id="theme-grid">
-          ${THEMES.filter((t) => !(s.hiddenThemes || []).includes(t.id)).map((t) => `
-            <span class="swatch theme-swatch ${s.theme === t.id ? 'active' : ''}" data-theme="${t.id}"
-              style="background:${t.brand}" title="${t.label}">
-              <button class="theme-del" data-theme-id="${t.id}"><i class="ph-bold ph-x"></i></button>
-            </span>`).join('')}
-          ${(s.savedColors || []).map((c) => `
-            <span class="swatch saved-swatch ${s.theme === 'custom' && s.customColor === c ? 'active' : ''}"
-              data-saved-color="${c}" style="background:${c}" title="${c}">
-              <button class="saved-del" data-del-color="${c}"><i class="ph-bold ph-x"></i></button>
-            </span>`).join('')}
-        </div>
+        <div class="theme-grid" id="theme-grid"></div>
         <div class="custom-color-row">
           <label class="custom-pick" title="Elegir color">
-            <input type="color" id="custom-color" value="${s.customColor || '#ba4949'}" />
-            <span class="custom-preview" style="background:${s.customColor || '#ba4949'}"></span>
+            <input type="color" id="custom-color" value="${activeBrand}" />
+            <span class="custom-preview" style="background:${activeBrand}"></span>
             <i class="ph-bold ph-palette"></i>
           </label>
           <button class="save-color-btn" id="save-color-btn" title="Guardar color"><i class="ph-bold ph-floppy-disk"></i> Guardar</button>
@@ -888,8 +926,12 @@ function openSettings(): void {
       audio.stopAmbient()
       audio.setAlarmVolume(origAlarmVol)
       audio.setAmbientVolume(origAmbientVol)
-      state.settings.savedColors = origSavedColors
-      state.settings.hiddenThemes = origHiddenThemes
+      state.settings.theme = origTheme
+      state.settings.customColor = origCustomColor
+      state.settings.savedColors = [...origSavedColors]
+      state.settings.hiddenThemes = [...origHiddenThemes]
+      state.settings.backgroundPattern = origPattern
+      persistLocal()
       const origThemeObj = getTheme(origTheme, origCustomColor)
       applyTheme(origThemeObj.brand, origThemeObj.dark)
       applyBackgroundPattern(origPattern)
@@ -923,82 +965,35 @@ function openSettings(): void {
     }
   })
 
-  // Theme: live preview al hacer click
-  backdrop.querySelectorAll<HTMLElement>('[data-theme]').forEach((b) => {
-    b.addEventListener('click', (e) => {
-      if ((e.target as HTMLElement).closest('.theme-del')) return
-      backdrop.querySelectorAll('[data-theme]').forEach((x) => x.classList.remove('active'))
-      backdrop.querySelectorAll('.saved-swatch').forEach((x) => x.classList.remove('active'))
-      b.classList.add('active')
-      const t = getTheme(b.dataset.theme!)
-      applyTheme(t.brand, t.dark)
-    })
-  })
+  renderThemeGrid(backdrop, state.settings)
 
-  // Borrar temas predefinidos
-  backdrop.querySelectorAll<HTMLElement>('.theme-del').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation()
-      const id = btn.dataset.themeId!
-      const hidden = state.settings.hiddenThemes || []
-      if (!hidden.includes(id)) {
-        hidden.push(id)
-        state.settings.hiddenThemes = hidden
-        persistLocal()
-        void api.saveSettings(state.settings).catch(() => {})
-        renderThemeGrid(backdrop, s)
-      }
-    })
-  })
-
-  // Custom color: live preview
   const customColorInput = backdrop.querySelector<HTMLInputElement>('#custom-color')!
   const customPreview = backdrop.querySelector<HTMLElement>('.custom-preview')
   customColorInput.addEventListener('input', () => {
+    const hex = normalizeHex(customColorInput.value)
+    const applied = normalizeHex(getTheme(state.settings.theme, state.settings.customColor).brand)
+    if (hex === applied) return
+    setActiveColor('custom', hex)
+    if (customPreview) customPreview.style.background = state.settings.customColor
     backdrop.querySelectorAll('[data-theme]').forEach((x) => x.classList.remove('active'))
-    backdrop.querySelectorAll('.saved-swatch').forEach((x) => x.classList.remove('active'))
-    const hex = customColorInput.value
-    if (customPreview) customPreview.style.background = hex
-    applyTheme(hex, darkenColor(hex))
+    const current = state.settings.customColor
+    backdrop.querySelectorAll<HTMLElement>('.saved-swatch').forEach((el) => {
+      el.classList.toggle('active', normalizeHex(el.dataset.savedColor || '') === current)
+    })
   })
 
-  // Guardar color personalizado en la lista
+  // Guardar deja ese color como el activo y conserva el anterior en la paleta.
   backdrop.querySelector('#save-color-btn')?.addEventListener('click', () => {
-    const hex = customColorInput.value
-    const colors = state.settings.savedColors || []
-    if (!colors.includes(hex)) {
-      colors.push(hex)
-      state.settings.savedColors = colors
-      persistLocal()
-      void api.saveSettings(state.settings).catch(() => {})
-      renderThemeGrid(backdrop, s)
-    }
-  })
-
-  // Click en colores guardados: seleccionar
-  backdrop.querySelectorAll<HTMLElement>('.saved-swatch').forEach((el) => {
-    el.addEventListener('click', (e) => {
-      if ((e.target as HTMLElement).closest('.saved-del')) return
-      backdrop.querySelectorAll('[data-theme]').forEach((x) => x.classList.remove('active'))
-      backdrop.querySelectorAll('.saved-swatch').forEach((x) => x.classList.remove('active'))
-      el.classList.add('active')
-      const hex = el.dataset.savedColor!
-      customColorInput.value = hex
-      if (customPreview) customPreview.style.background = hex
-      applyTheme(hex, darkenColor(hex))
-    })
-  })
-
-  // Borrar colores guardados
-  backdrop.querySelectorAll<HTMLElement>('.saved-del').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation()
-      const hex = btn.dataset.delColor!
-      state.settings.savedColors = (state.settings.savedColors || []).filter((c) => c !== hex)
-      persistLocal()
-      void api.saveSettings(state.settings).catch(() => {})
-      renderThemeGrid(backdrop, s)
-    })
+    const hex = normalizeHex(customColorInput.value)
+    const applied = normalizeHex(getTheme(state.settings.theme, state.settings.customColor).brand)
+    if (hex !== applied || state.settings.theme === 'custom') setActiveColor('custom', hex)
+    pushSavedColor(hex)
+    persistLocal()
+    void api.saveSettings(state.settings).catch(() => {})
+    origTheme = state.settings.theme
+    origCustomColor = state.settings.customColor
+    origSavedColors = [...(state.settings.savedColors || [])]
+    renderThemeGrid(backdrop, state.settings)
   })
 
   // Pattern: live preview al hacer click
@@ -1031,8 +1026,6 @@ function openSettings(): void {
   backdrop.querySelector<HTMLButtonElement>('#modal-save')!.addEventListener('click', () => {
     const num = (sel: string): number =>
       Math.max(1, Number((backdrop.querySelector(sel) as HTMLInputElement).value) || 25)
-    const activeTheme = backdrop.querySelector<HTMLButtonElement>('[data-theme].active')?.dataset.theme
-    const isCustom = !activeTheme
     const newSettings: Settings = {
       ...state.settings,
       focusMinutes: num('#set-focus'),
@@ -1043,8 +1036,9 @@ function openSettings(): void {
       autoStartFocus: backdrop.querySelector('#set-autofocus')!.classList.contains('on'),
       alarmSound: backdrop.querySelector<HTMLButtonElement>('#alarm-select')?.dataset.value ?? state.settings.alarmSound,
       ambientSound: backdrop.querySelector<HTMLButtonElement>('#ambient-select')?.dataset.value ?? state.settings.ambientSound,
-      theme: isCustom ? 'custom' : activeTheme,
-      customColor: isCustom ? customColorInput.value : state.settings.customColor,
+      theme: state.settings.theme,
+      customColor: normalizeHex(state.settings.customColor),
+      savedColors: (state.settings.savedColors || []).map((c) => normalizeHex(c)),
       backgroundPattern: backdrop.querySelector<HTMLButtonElement>('[data-pattern].active')?.dataset.pattern ?? state.settings.backgroundPattern,
       alarmVolume: Number(alarmVol.value),
       ambientVolume: Number(ambientVol.value),
@@ -1061,7 +1055,11 @@ function openSettings(): void {
 }
 
 function applySettings(s: Settings): void {
-  state.settings = { ...s }
+  state.settings = {
+    ...s,
+    customColor: normalizeHex(s.customColor),
+    savedColors: (s.savedColors || []).map((c) => normalizeHex(c)),
+  }
   persistLocal()
   const theme = getTheme(s.theme, s.customColor)
   applyTheme(theme.brand, theme.dark)
@@ -1142,6 +1140,10 @@ el.btnSkip.addEventListener('click', () => {
   completeSession({ skip: true })
 })
 window.addEventListener('pagehide', () => closePiP())
+// Al volver a la pestaña el intervalo puede llevar rato sin dispararse: sincroniza ya.
+document.addEventListener('visibilitychange', () => {
+  if (state.running) tick()
+})
 el.btnSettings.addEventListener('click', openSettings)
 el.newTask.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') void submitTask()
